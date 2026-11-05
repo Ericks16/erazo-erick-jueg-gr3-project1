@@ -18,18 +18,26 @@ const ORB_COUNT = 5;
 const MAX_HAZARDS = 15;
 
 const COLORS = {
-  bg: '#101423',
-  bgInt: 0x101423,
+  bg: '#0b0e18',
+  bgInt: 0x0b0e18,
   grid: 0x1c2540,
+  gridBright: 0x2a3a66,
   orb: 0xffd166,
   hazard: 0x4cc9f0,
+  hazardGlow: 0x7fe3ff,
   text: '#e8ecf8',
   dim: '#8a93b2',
   accent: '#ff5d8f',
   good: '#7ef0c0',
   warn: '#ff9f68',
   bgGradientStart: '#1a1f33',
-  bgGradientEnd: '#0b0e18'
+  bgGradientEnd: '#0b0e18',
+  neonPink: 0xff5d8f,
+  neonCyan: 0x4cc9f0,
+  neonYellow: 0xffd166,
+  neonGreen: 0x7ef0c0,
+  neonPurple: 0xb56aff,
+  scanline: 0x05070d
 };
 
 const FONT = 'Consolas, "Courier New", monospace';
@@ -99,54 +107,135 @@ function ensureTextures(scene) {
     g.destroy();
   };
 
-  // Jugador: rectángulo plano de 42x42.
-  make('player', PLAYER_SIZE, PLAYER_SIZE, (g) => {
-    g.fillStyle(PLAYER_COLOR, 1);
-    g.fillRect(0, 0, PLAYER_SIZE, PLAYER_SIZE);
+  // Jugador: rectángulo neon con borde glow y micro flashes internos.
+  make('player', PLAYER_SIZE + 8, PLAYER_SIZE + 8, (g) => {
+    // Halo exterior
+    g.fillStyle(COLORS.neonPink, 0.35);
+    g.fillCircle(25, 25, 27);
+    g.fillStyle(COLORS.neonPink, 0.55);
+    g.fillCircle(25, 25, 22);
+    // Cuadrado central con borde negativo
+    g.fillStyle(COLORS.bgInt, 1);
+    g.fillRect(4, 6, 42, 42);
+    // Borde del neón puro
+    g.lineStyle(2, COLORS.neonPink, 1);
+    g.strokeRect(4, 6, 42, 42);
+    // Inner flashes
+    g.lineStyle(1, COLORS.neonYellow, 1);
+    g.strokeRect(8, 10, 34, 34);
+    g.fillStyle(COLORS.neonCyan, 0.85);
+    g.fillRect(6, 8, 38, 2);
+    g.fillRect(40, 8, 2, 30);
+    g.fillRect(4, 32, 40, 2);
+    g.fillRect(8, 6, 2, 32);
   });
 
-  // Orbe coleccionable: círculo dorado con un punto de luz.
-  make('orb', 28, 28, (g) => {
-    g.fillStyle(COLORS.orb, 1);
-    g.fillCircle(14, 14, 12);
+  // Orbe: halo dorado + núcleo brillante.
+  make('orb', 36, 36, (g) => {
+    g.fillStyle(COLORS.neonYellow, 0.25);
+    g.fillCircle(18, 18, 17);
+    g.fillStyle(COLORS.neonYellow, 0.6);
+    g.fillCircle(18, 18, 11);
     g.fillStyle(0xfff3c4, 1);
-    g.fillCircle(10, 10, 4);
+    g.fillCircle(13, 13, 4);
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(18, 18, 3);
   });
 
-  // Peligro: rombo hueco cian.
-  make('hazard', 32, 32, (g) => {
-    g.fillStyle(0x123246, 1);
-    g.lineStyle(3, COLORS.hazard, 1);
+  // Peligro: rombo cian con brillo interior, warning glow externo.
+  make('hazard', 52, 52, (g) => {
+    g.fillStyle(COLORS.neonCyan, 0.2);
+    g.fillRect(0, 0, 52, 52);
+    g.lineStyle(2, COLORS.neonCyan, 0.6);
     g.beginPath();
-    g.moveTo(16, 3);
-    g.lineTo(29, 16);
-    g.lineTo(16, 29);
-    g.lineTo(3, 16);
+    g.moveTo(20, 2);
+    g.lineTo(48, 20);
+    g.lineTo(46, 36);
+    g.lineTo(28, 46);
+    g.lineTo(6, 32);
+    g.lineTo(2, 12);
     g.closePath();
+    g.fillStyle(COLORS.neonCyan, 0.5);
     g.fillPath();
+    g.strokePath();
+    g.lineStyle(1, COLORS.neonCyan, 0.75);
+    g.beginPath();
+    g.moveTo(14, 8);
+    g.lineTo(36, 14);
+    g.lineTo(34, 26);
+    g.lineTo(22, 34);
+    g.lineTo(10, 26);
+    g.lineTo(8, 16);
+    g.closePath();
     g.strokePath();
   });
 
   // Partícula base para los estallidos.
-  make('spark', 8, 8, (g) => {
+  make('spark', 10, 10, (g) => {
     g.fillStyle(0xffffff, 1);
-    g.fillCircle(4, 4, 4);
+    g.fillCircle(5, 5, 5);
+    g.fillStyle(0xffffff, 0.5);
+    g.fillCircle(3, 3, 2);
   });
 
-  // Nueva textura: efecto de brillo para el jugador
-  make('playerGlow', PLAYER_SIZE, PLAYER_SIZE, (g) => {
-    g.fillStyle(0xff5d8f, 0.6);
-    g.fillRect(0, 0, PLAYER_SIZE, PLAYER_SIZE);
+  // Glow player y detalles de boost.
+  make('playerGlow', PLAYER_SIZE + 8, PLAYER_SIZE + 8, (g) => {
+    g.fillStyle(COLORS.neonPink, 0.6);
+    g.fillCircle(25, 25, 25);
+    g.fillStyle(COLORS.neonYellow, 0.7);
+    g.fillCircle(25, 25, 13);
+    g.fillStyle(COLORS.neonCyan, 0.5);
+    g.fillCircle(25, 25, 8);
+  });
+
+  // Pinchos estáticos para el escenario.
+  make('rock', 20, 20, (g) => {
+    g.fillStyle(COLORS.neonPurple, 0.75);
+    g.fillCircle(10, 10, 10);
+    g.lineStyle(1, COLORS.neonPurple, 1);
+    g.strokeCircle(10, 10, 10);
+    g.fillStyle(0xffe5ff, 0.6);
+    g.fillCircle(7, 7, 2);
+  });
+
+  // Estrellas de fondo.
+  make('star', 6, 6, (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(3, 3, 3);
     g.fillStyle(0xffffff, 0.3);
-    g.fillRect(4, 4, 8, 8);
+    g.fillCircle(3, 3, 5);
   });
 }
 
 function drawGrid(scene) {
   const g = scene.add.graphics().setDepth(-10);
-  g.lineStyle(1, COLORS.grid, 0.9);
+
+  // Fondo degradado (reflejado en HUD para escena de resultado)
+  const grad = scene.add.graphics().setDepth(-20);
+  for (let y = 0; y < GAME_HEIGHT; y += 4) {
+    const t = y / GAME_HEIGHT;
+    const r = Math.floor(0.102 * (1 - t) + 0.043 * t);
+    const gv = Math.floor(0.118 * (1 - t) + 0.055 * t);
+    const b = Math.floor(0.196 * (1 - t) + 0.102 * t);
+    grad.fillStyle(Phaser.Display.Color.GetColor(r, gv, b), 1);
+    grad.fillRect(0, y, GAME_WIDTH, 4);
+  }
+
+  // Cuadrícula principal
+  g.lineStyle(1, COLORS.grid, 0.7);
   for (let x = 0; x <= GAME_WIDTH; x += 40) g.lineBetween(x, 0, x, GAME_HEIGHT);
   for (let y = 0; y <= GAME_HEIGHT; y += 40) g.lineBetween(0, y, GAME_WIDTH, y);
+
+  // Sub-grid sutil
+  g.lineStyle(1, COLORS.gridBright, 0.25);
+  for (let x = 0; x <= GAME_WIDTH; x += 20) g.lineBetween(x, 0, x, GAME_HEIGHT);
+  for (let y = 0; y <= GAME_HEIGHT; y += 20) g.lineBetween(0, y, GAME_WIDTH, y);
+
+  // Líneas de borde escenario (fondo escena)
+  g.lineStyle(3, COLORS.gridBright, 0.8);
+  g.lineBetween(0, 0, GAME_WIDTH, 0);
+  g.lineBetween(0, GAME_HEIGHT - 1, GAME_WIDTH, GAME_HEIGHT - 1);
+
   return g;
 }
 
@@ -323,6 +412,36 @@ class GameScene extends Phaser.Scene {
 
     this.physics.world.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
+    // Haz stars flotando en el bg (permanent particles).
+    this.bgStars = scene ? scene.add.particles(0, 0, 'star', {
+      x: { min: 0, max: GAME_WIDTH },
+      y: { min: 0, max: GAME_HEIGHT },
+      speedX: { min: -4, max: 4 },
+      speedY: { min: -4, max: -1 },
+      gravityY: -6,
+      lifespan: { min: 3000, max: 7000 },
+      scale: { start: 0.5, end: 0 },
+      alpha: { start: 1, end: 0 },
+      frequency: 220,
+      tint: [0xffffff, COLORS.neonCyan],
+      quantity: 1
+    }).setDepth(-5);
+    this.bgStars.start();
+
+    this.bgPulse = scene.add.particles(0, 0, 'star', {
+      x: { min: 0, max: GAME_WIDTH },
+      y: { min: 0, max: GAME_HEIGHT },
+      speedX: 0,
+      speedY: 0,
+      lifespan: 4000,
+      scale: { start: 0.4, end: 0 },
+      alpha: { start: 0.9, end: 0 },
+      frequency: 2400,
+      tint: COLORS.neonPurple,
+      quantity: 1
+    }).setDepth(-3);
+    this.bgPulse.start();
+
     /* Jugador ---------------------------------------------------------- */
     this.player = this.physics.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'player');
     this.player.setDepth(10);
@@ -333,33 +452,33 @@ class GameScene extends Phaser.Scene {
     /* Partículas ------------------------------------------------------- */
     this.trail = this.add
       .particles(0, 0, 'spark', {
-        speed: 10,
-        lifespan: 320,
-        scale: { start: 0.45, end: 0 },
-        alpha: { start: 0.6, end: 0 },
-        tint: PLAYER_COLOR,
-        frequency: 45,
-        quantity: 1
+        speed: { min: 6, max: 14 },
+        lifespan: { min: 180, max: 420 },
+        scale: { start: 0.5, end: 0 },
+        alpha: { start: 0.9, end: 0 },
+        tint: [COLORS.neonPink, COLORS.neonYellow, COLORS.neonCyan],
+        frequency: 32,
+        quantity: 2
       })
       .setDepth(4);
     this.trail.startFollow(this.player);
 
     this.orbBurst = this.add
       .particles(0, 0, 'spark', {
-        speed: { min: 70, max: 230 },
-        lifespan: { min: 300, max: 600 },
-        scale: { start: 1.1, end: 0 },
-        tint: [COLORS.orb, 0xfff3c4, 0xff8fbf],
+        speed: { min: 60, max: 260 },
+        lifespan: { min: 280, max: 640 },
+        scale: { start: 1.3, end: 0 },
+        tint: [COLORS.neonYellow, 0xfff3c4, COLORS.neonPink, COLORS.neonCyan],
         emitting: false
       })
       .setDepth(9);
 
     this.hitBurst = this.add
       .particles(0, 0, 'spark', {
-        speed: { min: 90, max: 260 },
-        lifespan: { min: 300, max: 650 },
-        scale: { start: 1.3, end: 0 },
-        tint: [COLORS.hazard, 0xffffff, 0xff5d8f],
+        speed: { min: 80, max: 280 },
+        lifespan: { min: 280, max: 680 },
+        scale: { start: 1.4, end: 0 },
+        tint: [COLORS.neonCyan, 0xffffff, COLORS.neonPink],
         emitting: false
       })
       .setDepth(9);
@@ -371,6 +490,7 @@ class GameScene extends Phaser.Scene {
       bounce: 1,
       collideWorldBounds: true
     });
+    this.rocks = this.physics.add.staticGroup();
 
     this.physics.add.overlap(this.player, this.orbs, this.collectOrb, null, this);
     this.physics.add.overlap(this.player, this.hazards, this.takeHit, null, this);
@@ -380,8 +500,8 @@ class GameScene extends Phaser.Scene {
 
     /* Entidades iniciales ---------------------------------------------- */
     for (let i = 0; i < ORB_COUNT; i += 1) this.spawnOrb();
-    this.spawnHazard();
-    this.spawnHazard();
+    for (let i = 0; i < 2; i += 1) this.spawnHazard();
+    for (let i = 0; i < 6; i += 1) this.rocks.create(Phaser.Math.Between(40, GAME_WIDTH - 40), GAME_HEIGHT, 'rock').setDepth(3);
 
     /* Entrada ---------------------------------------------------------- */
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -498,10 +618,10 @@ class GameScene extends Phaser.Scene {
     let x = GAME_WIDTH / 2;
     let y = GAME_HEIGHT / 2;
 
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       x = Phaser.Math.Between(50, GAME_WIDTH - 50);
-      y = Phaser.Math.Between(120, GAME_HEIGHT - 50);
-      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) > 150) break;
+      y = Phaser.Math.Between(130, GAME_HEIGHT - 50);
+      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) > 180) break;
     }
 
     const orb = this.orbs.create(x, y, 'orb');
@@ -512,8 +632,8 @@ class GameScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: orb,
-      scale: { from: 0.82, to: 1.14 },
-      duration: 800,
+      scale: { from: 0.8, to: 1.2 },
+      duration: 700,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
@@ -521,7 +641,7 @@ class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: orb,
       angle: 360,
-      duration: 5000,
+      duration: 5200,
       repeat: -1
     });
   }
@@ -548,24 +668,27 @@ class GameScene extends Phaser.Scene {
       y = Phaser.Math.Between(margin, GAME_HEIGHT - margin);
     }
 
+    // Si el borde superior envía el hazard, asegúrate de que no quede fuera del HUD (evita la línea del HUD)
+    if (edge === 0 && y < 90) y = 90;
+
     const hazard = this.hazards.create(x, y, 'hazard');
     hazard.setDepth(6);
     hazard.body.setAllowGravity(false);
     hazard.body.setCircle(14, 2, 2);
     hazard.setCollideWorldBounds(true);
-    hazard.setBounce(1);
+    hazard.setBounce(0.9);
 
     const targetX = Phaser.Math.Between(150, GAME_WIDTH - 150);
-    const targetY = Phaser.Math.Between(200, GAME_HEIGHT - 150);
+    const targetY = Phaser.Math.Between(180, GAME_HEIGHT - 150);
     const angle = Phaser.Math.Angle.Between(x, y, targetX, targetY);
-    const speed = Math.min(150, 75 + this.collected * 6);
+    const speed = Math.min(170, 80 + this.collected * 7);
 
     this.physics.velocityFromRotation(angle, speed, hazard.body.velocity);
 
     this.tweens.add({
       targets: hazard,
       angle: 360,
-      duration: Phaser.Math.Between(2600, 4200),
+      duration: Phaser.Math.Between(2400, 4200),
       repeat: -1
     });
   }
@@ -581,7 +704,10 @@ class GameScene extends Phaser.Scene {
 
     this.timeLeft -= 1;
     this.timeText.setText(`TIEMPO ${this.timeLeft}`);
-    if (this.timeLeft <= 10) this.timeText.setColor(COLORS.warn);
+    if (this.timeLeft <= 10) {
+      this.timeText.setColor(COLORS.warn);
+      if (this.timeLeft <= 5) Sfx.blip(920, 0.09, 'square', 0.07);
+    }
 
     if (this.timeLeft <= 0) this.endGame(true);
   }
@@ -596,9 +722,18 @@ class GameScene extends Phaser.Scene {
     this.score += 10;
     this.collected += 1;
 
-    this.orbBurst.explode(14, x, y);
-    Sfx.blip(760 + Math.min(this.collected, 12) * 35, 0.09, 'triangle', 0.05);
-    this.cameras.main.shake(80, 0.002);
+    this.orbBurst.explode(18, x, y);
+    this.cameras.main.shake(60, 0.003);
+    Sfx.blip(820 + Math.min(this.collected, 12) * 40, 0.09, 'triangle', 0.06);
+
+    // Destello extra en el orbe al recogerlo.
+    this.tweens.add({
+      targets: this.player,
+      scale: { from: 1.15, to: 1 },
+      duration: 100,
+      ease: 'Back.easeOut',
+      onComplete: () => {}
+    });
 
     this.updateHUD();
     this.spawnOrb();
@@ -609,9 +744,9 @@ class GameScene extends Phaser.Scene {
     if (this.isOver || this.invulnerable) return;
 
     this.lives -= 1;
-    this.hitBurst.explode(18, player.x, player.y);
-    Sfx.blip(150, 0.22, 'sawtooth', 0.07);
-    this.cameras.main.shake(220, 0.009);
+    this.hitBurst.explode(22, player.x, player.y);
+    this.cameras.main.shake(280, 0.011);
+    Sfx.blip(180, 0.3, 'sawtooth', 0.09);
     this.updateHUD();
 
     if (this.lives <= 0) {
@@ -622,13 +757,13 @@ class GameScene extends Phaser.Scene {
     this.invulnerable = true;
     this.player.setAlpha(0.4);
     this.time.addEvent({
-      delay: 120,
+      delay: 110,
       repeat: 9,
       callback: () => {
         if (this.player) this.player.setAlpha(this.player.alpha < 1 ? 1 : 0.4);
       }
     });
-    this.time.delayedCall(1300, () => {
+    this.time.delayedCall(1200, () => {
       this.invulnerable = false;
       if (this.player) this.player.setAlpha(1);
     });
@@ -643,26 +778,40 @@ class GameScene extends Phaser.Scene {
 
   // Nuevo: Activa un boost temporal al presionar ESPACIO
   activateBoost() {
-    if (this.isOver || this.isPaused) return;
+    if (this.isOver || this.isPaused || !this.player) return;
 
     // Efecto visual de boost
-    this.player.setTint(0x00ffff);
-    this.time.delayedCall(200, () => {
-      this.player.setTint(PLAYER_COLOR);
+    const boostTint = [COLORS.neonCyan, COLORS.neonYellow, COLORS.neonPink];
+    this.player.setTint(boostTint[0]);
+    this.time.addEvent({
+      delay: 90,
+      repeat: 5,
+      callback: () => {
+        if (this.player)
+          this.player.setTint(boostTint[Math.floor(Math.random() * boostTint.length)]);
+      }
+    });
+    this.time.delayedCall(650, () => {
+      if (this.player) this.player.setTint(PLAYER_COLOR);
     });
 
+    // Efecto particle boost extra
+    this.orbBurst.explode(12, this.player.x, this.player.y);
+
     // Aumentar velocidad temporalmente
-    const boostSpeed = PLAYER_SPEED * 1.5;
+    const boostFactor = 1.6;
     this.player.setVelocity(
-      this.player.velocity.x * 1.5,
-      this.player.velocity.y * 1.5
+      (this.player.body.velocity.x || 0) * boostFactor,
+      (this.player.body.velocity.y || 0) * boostFactor
     );
-    this.time.delayedCall(800, () => {
-      this.player.setVelocity(
-        (this.player.velocity.x / 1.5),
-        (this.player.velocity.y / 1.5)
-      );
+    this.time.delayedCall(750, () => {
+      if (this.player)
+        this.player.setVelocity(
+          (this.player.body.velocity.x / boostFactor) || 0,
+          (this.player.body.velocity.y / boostFactor) || 0
+        );
     });
+    Sfx.blip(1200, 0.12, 'sine', 0.07);
   }
 
   cleanupPauseMemory() {
@@ -677,16 +826,22 @@ class GameScene extends Phaser.Scene {
       if (t.isPlaying()) t.stop();
       if (t.isPaused()) t.resume();
     });
-    this.trail.stop();
-    this.orbBurst.stop();
-    this.hitBurst.stop();
-    this.orbBurst = null;
-    this.hitBurst = null;
-    this.timerEvent.remove();
+    if (this.trail) this.trail.stop();
+    if (this.orbBurst) this.orbBurst.stop();
+    if (this.hitBurst) this.hitBurst.stop();
+    if (this.bgStars) this.bgStars.stop();
+    if (this.bgPulse) this.bgPulse.stop();
+    if (this.orbBurst) this.orbBurst = null;
+    if (this.hitBurst) this.hitBurst = null;
+    if (this.timerEvent) this.timerEvent.remove();
     if (this.pauseTtlTimer) {
       this.pauseTtlTimer.remove();
       this.pauseTtlTimer = null;
     }
+  }
+
+  cleanupRocks() {
+    this.rocks.destroyAll();
   }
 
   endGame(won) {
@@ -696,6 +851,8 @@ class GameScene extends Phaser.Scene {
     this.player.setVelocity(0, 0);
     this.physics.pause();
     this.trail.stop();
+    if (this.bgStars) this.bgStars.stop();
+    if (this.bgPulse) this.bgPulse.stop();
     if (this.timerEvent) this.timerEvent.remove();
 
     Sfx.blip(won ? 880 : 180, 0.25, won ? 'sine' : 'sawtooth', 0.06);
@@ -715,6 +872,7 @@ class GameScene extends Phaser.Scene {
     /* Libera recursos antes de cerrar el juego o pasar a Result,
      * para que el navegador no retenga memoria al cambiar de escena.
      */
+    this.cleanupRocks();
     this.cleanupPauseMemory();
   }
 

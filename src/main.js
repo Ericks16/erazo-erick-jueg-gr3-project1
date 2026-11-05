@@ -319,7 +319,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.hazards, this.takeHit, null, this);
 
     /* HUD -------------------------------------------------------------- */
-    this.createHud();
+    this.createHUD();
 
     /* Entidades iniciales ---------------------------------------------- */
     for (let i = 0; i < ORB_COUNT; i += 1) this.spawnOrb();

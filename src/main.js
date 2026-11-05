@@ -228,7 +228,7 @@ class MenuScene extends Phaser.Scene {
     loreLines.forEach((line, index) => {
       const style = { fontFamily: FONT, fontSize: index === 0 ? '24px' : '16px', color: index === 0 ? COLORS.accent : COLORS.dim };
       this.add
-        .text(GAME_WIDTH / 2, 200 + index * 28, line, style)
+        .text(GAME_WIDTH / 2, 180 + index * 24, line, style)
         .setOrigin(0.5);
     });
 
@@ -385,6 +385,8 @@ class GameScene extends Phaser.Scene {
 
     /* Entrada ---------------------------------------------------------- */
     this.cursors = this.input.keyboard.createCursorKeys();
+    // Teclas WASD
+    this.keys = this.input.keyboard.addKeys('W,A,S,D');
     this.input.keyboard.on('keydown-P', this.togglePause, this);
 
     // Nueva entrada: boost espacial (barra espaciadora)
@@ -720,10 +722,10 @@ class GameScene extends Phaser.Scene {
     const cursorUp = this.cursors.up.isDown;
     const cursorDown = this.cursors.down.isDown;
 
-    const wDown = this.input.keyboard.checkDown(87); // W
-    const aDown = this.input.keyboard.checkDown(65); // A
-    const sDown = this.input.keyboard.checkDown(83); // S
-    const dDown = this.input.keyboard.checkDown(68); // D
+    const wDown = this.keys.w.isDown;
+    const aDown = this.keys.a.isDown;
+    const sDown = this.keys.s.isDown;
+    const dDown = this.keys.d.isDown;
 
     let x = 0;
     let y = 0;

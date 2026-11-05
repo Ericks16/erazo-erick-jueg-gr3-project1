@@ -16,6 +16,8 @@ estático. No requiere instalación ni compilación.
 - `P`: pausar o continuar.
 - `M`: activar o silenciar la música procedural.
 - `T`: abrir la tienda entre partidas.
+- `F` o clic: disparar una bala al objetivo más cercano.
+- `R`: recargar munición.
 - En móvil: el juego se adapta al tamaño de pantalla y permite tocar para
   iniciar/repetir.
 
@@ -25,6 +27,10 @@ estático. No requiere instalación ni compilación.
   dependencias adicionales.
 - Los objetos depredadores vuelven al piloto invulnerable durante unos
   segundos: al tocar un drone, lo consume y otorga puntos y créditos.
+- Las cajas de munición aparecen durante la campaña. Las balas destruyen drones
+  y también dañan directamente al jefe.
+- Las esquinas del mapa están protegidas por pinchos; el skyline, sus ventanas,
+  las estrellas y el tráfico aéreo tienen animaciones independientes.
 - Las oleadas generan más drones y aumentan su velocidad progresivamente.
 - La tienda permite gastar créditos en turbo, imán de núcleos y blindaje.
   Las mejoras quedan guardadas durante la sesión del navegador.

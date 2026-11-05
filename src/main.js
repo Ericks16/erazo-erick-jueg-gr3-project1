@@ -66,14 +66,16 @@ const Sfx = {
   startMusic() {
     this.init();
     if (!this.ctx || this.musicTimer || !this.musicEnabled) return;
-    const notes = [110, 110, 164.81, 146.83, 110, 123.47, 164.81, 185];
+    const bass = [55, 55, 73.42, 65.41, 49, 55, 82.41, 73.42];
+    const melody = [220, 261.63, 329.63, 392, 329.63, 261.63, 196, 220];
     this.musicTimer = window.setInterval(() => {
       if (!this.ctx || this.ctx.state === 'suspended') return;
-      const note = notes[this.musicStep % notes.length];
-      this.blip(note, 0.24, 'sawtooth', 0.018);
-      if (this.musicStep % 4 === 0) this.blip(note * 2, 0.12, 'triangle', 0.012);
+      const step = this.musicStep % bass.length;
+      this.blip(bass[step], 0.32, 'sawtooth', 0.024);
+      this.blip(melody[step], 0.16, 'triangle', 0.014);
+      if (step % 2 === 0) this.blip(82, 0.06, 'square', 0.018);
       this.musicStep += 1;
-    }, 280);
+    }, 240);
   },
   stopMusic() {
     if (this.musicTimer) {
@@ -176,6 +178,38 @@ function ensureTextures(scene) {
     g.strokeCircle(23, 23, 18);
   });
 
+  make('bullet', 14, 14, (g) => {
+    g.fillStyle(COLORS.yellow, 0.25);
+    g.fillCircle(7, 7, 7);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(7, 7, 3);
+    g.lineStyle(1, COLORS.yellow, 1);
+    g.strokeCircle(7, 7, 6);
+  });
+
+  make('ammo', 42, 42, (g) => {
+    g.fillStyle(COLORS.yellow, 0.2);
+    g.fillCircle(21, 21, 20);
+    g.fillStyle(COLORS.yellow, 1);
+    g.fillRect(12, 8, 8, 25);
+    g.fillRect(23, 8, 8, 25);
+    g.lineStyle(2, 0xffffff, 0.85);
+    g.strokeRect(12, 8, 8, 25);
+    g.strokeRect(23, 8, 8, 25);
+  });
+
+  make('spike', 26, 26, (g) => {
+    g.fillStyle(COLORS.pink, 0.25);
+    g.fillCircle(13, 13, 13);
+    g.fillStyle(COLORS.pink, 0.9);
+    g.beginPath();
+    g.moveTo(13, 1); g.lineTo(17, 10); g.lineTo(25, 7); g.lineTo(20, 15);
+    g.lineTo(25, 22); g.lineTo(15, 19); g.lineTo(13, 25); g.lineTo(10, 19);
+    g.lineTo(1, 22); g.lineTo(6, 14); g.lineTo(1, 7); g.lineTo(10, 10);
+    g.closePath();
+    g.fillPath();
+  });
+
   make('spark', 8, 8, (g) => {
     g.fillStyle(0xffffff, 1);
     g.fillCircle(4, 4, 4);
@@ -209,6 +243,7 @@ function drawBackground(scene) {
   grid.strokeRect(1, HUD_HEIGHT, GAME_WIDTH - 2, GAME_HEIGHT - HUD_HEIGHT - 2);
 
   const skyline = scene.add.graphics().setDepth(-8);
+  const windows = [];
   skyline.fillStyle(0x101a36, 0.9);
   for (let x = 0; x < GAME_WIDTH; x += 38) {
     const height = 35 + ((x * 17) % 95);
@@ -217,6 +252,20 @@ function drawBackground(scene) {
     for (let y = GAME_HEIGHT - height + 12; y < GAME_HEIGHT - 5; y += 16) {
       skyline.fillRect(x + 7, y, 4, 5);
       skyline.fillRect(x + 19, y, 4, 5);
+      windows.push({ x: x + 7, y, color: (x + y) % 3 === 0 ? COLORS.yellow : COLORS.cyan });
+    }
+    windows.slice(0, 22).forEach((windowLight, index) => {
+      const light = scene.add.rectangle(windowLight.x, windowLight.y, 4, 5, windowLight.color, 0.6)
+        .setDepth(-7);
+      scene.tweens.add({
+        targets: light, alpha: 0.12 + (index % 3) * 0.12,
+        duration: 700 + index * 90, yoyo: true, repeat: -1
+      });
+    });
+    for (let index = 0; index < 4; index += 1) {
+      const traffic = scene.add.rectangle(-80 - index * 160, 190 + index * 55, 74, 2,
+        index % 2 ? COLORS.pink : COLORS.cyan, 0.6).setDepth(-6);
+      scene.tweens.add({ targets: traffic, x: GAME_WIDTH + 100, duration: 5200 + index * 700, repeat: -1 });
     }
     skyline.fillStyle(0x101a36, 0.9);
   }
@@ -331,6 +380,8 @@ class GameScene extends Phaser.Scene {
     this.bossHitCooldown = 0;
     this.boss = null;
     this.kills = 0;
+    this.ammo = 3;
+    this.maxAmmo = 8;
     this.combo = 0;
     this.wave = 1;
     this.invulnerable = false;
@@ -351,10 +402,15 @@ class GameScene extends Phaser.Scene {
     this.hazards = this.physics.add.group({ allowGravity: false, bounce: 1, collideWorldBounds: true });
     this.pickups = this.physics.add.group({ allowGravity: false, immovable: true });
     this.bossGroup = this.physics.add.group({ allowGravity: false, immovable: true });
+    this.bullets = this.physics.add.group({ allowGravity: false });
+    this.spikes = this.physics.add.staticGroup();
     this.physics.add.overlap(this.player, this.orbs, this.collectOrb, null, this);
     this.physics.add.overlap(this.player, this.pickups, this.collectPickup, null, this);
     this.physics.add.overlap(this.player, this.hazards, this.handleHazardContact, null, this);
     this.physics.add.overlap(this.player, this.bossGroup, this.handleBossContact, null, this);
+    this.physics.add.overlap(this.player, this.spikes, this.handleSpikeContact, null, this);
+    this.physics.add.overlap(this.bullets, this.hazards, this.handleBulletHazard, null, this);
+    this.physics.add.overlap(this.bullets, this.bossGroup, this.handleBulletBoss, null, this);
 
     this.trail = this.add.particles(0, 0, 'spark', {
       speed: { min: 8, max: 18 }, lifespan: 350, scale: { start: 0.7, end: 0 },
@@ -377,11 +433,16 @@ class GameScene extends Phaser.Scene {
     };
     this.input.keyboard.on('keydown-P', this.togglePause, this);
     this.input.keyboard.on('keydown-SPACE', this.dash, this);
+    this.input.keyboard.on('keydown-F', this.fire, this);
+    this.input.keyboard.on('keydown-R', this.reload, this);
+    this.input.on('pointerdown', this.fire, this);
     for (let index = 0; index < ORB_COUNT + this.upgrades.magnet; index += 1) this.spawnOrb();
     for (let index = 0; index < 5; index += 1) this.spawnHazard(index * 3);
+    this.createCornerSpikes();
     this.timerEvent = this.time.addEvent({ delay: 1000, loop: true, callback: this.tickClock, callbackScope: this });
     this.hazardEvent = this.time.addEvent({ delay: 3600, loop: true, callback: this.progressDifficulty, callbackScope: this });
     this.pickupEvent = this.time.addEvent({ delay: 11000, loop: true, callback: this.spawnPredator, callbackScope: this });
+    this.ammoEvent = this.time.addEvent({ delay: 8500, loop: true, callback: this.spawnAmmo, callbackScope: this });
   }
 
   createHUD() {
@@ -395,6 +456,7 @@ class GameScene extends Phaser.Scene {
     this.dashText = this.add.text(778, 51, 'DASH LISTO [ESPACIO]', { fontFamily: FONT, fontSize: '11px', color: COLORS.good }).setOrigin(1, 0).setDepth(20);
     this.powerText = this.add.text(22, 65, 'DEPREDADOR: --', { fontFamily: FONT, fontSize: '11px', color: COLORS.dim }).setDepth(20);
     this.objectiveText = this.add.text(280, 51, 'OBJETIVO: 0 / 12', { fontFamily: FONT, fontSize: '11px', color: COLORS.text }).setDepth(20);
+    this.ammoText = this.add.text(545, 51, 'BALAS: 3/8 [F]', { fontFamily: FONT, fontSize: '11px', color: COLORS.yellow }).setDepth(20);
 
     const overlay = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.78).setOrigin(0);
     const title = this.add.text(400, 275, 'PAUSA', { fontFamily: FONT, fontSize: '56px', color: COLORS.accent, fontStyle: 'bold' }).setOrigin(0.5);
@@ -436,6 +498,30 @@ class GameScene extends Phaser.Scene {
     pickup.body.setCircle(12, 9, 9);
     this.tweens.add({ targets: pickup, angle: 360, duration: 1800, repeat: -1 });
     this.tweens.add({ targets: pickup, scale: { from: 0.7, to: 1.1 }, duration: 500, yoyo: true, repeat: -1 });
+  }
+
+  createCornerSpikes() {
+    const positions = [
+      [28, 112], [54, 112], [80, 112], [28, 138], [54, 138],
+      [720, 112], [746, 112], [772, 112], [720, 138], [746, 138],
+      [28, 550], [54, 550], [80, 550], [28, 524], [54, 524],
+      [720, 550], [746, 550], [772, 550], [720, 524], [746, 524]
+    ];
+    positions.forEach(([x, y]) => {
+      const spike = this.spikes.create(x, y, 'spike').setDepth(4);
+      spike.body.setCircle(9, 4, 4);
+      this.tweens.add({ targets: spike, alpha: 0.45, duration: 620 + (x % 4) * 90, yoyo: true, repeat: -1 });
+    });
+  }
+
+  spawnAmmo() {
+    if (this.isOver || this.pickups.countActive(true) > 0) return;
+    const pickup = this.pickups.create(Phaser.Math.Between(90, 710), Phaser.Math.Between(170, 510), 'ammo')
+      .setDepth(7);
+    pickup.setData('type', 'ammo');
+    pickup.body.setCircle(13, 8, 8);
+    this.tweens.add({ targets: pickup, angle: 360, duration: 1100, repeat: -1 });
+    this.tweens.add({ targets: pickup, scale: { from: 0.8, to: 1.15 }, duration: 400, yoyo: true, repeat: -1 });
   }
 
   spawnPredator() {
@@ -490,12 +576,15 @@ class GameScene extends Phaser.Scene {
     this.comboText.setText(`COMBO x${this.combo}`);
     this.waveText.setText(`ACTO ${this.sector} · ${this.sectorName}`);
     this.timeText.setText(this.sector === 3 ? `JEFE ${this.bossHealth}/${this.bossMaxHealth}` : `SECTOR ${this.sectorTime}`);
+    this.timeText.setColor(this.sectorTime <= 10 ? '#ffb36b' : COLORS.text);
     this.dashText.setText(this.dashCooldown <= 0 ? 'DASH LISTO [ESPACIO]' : `DASH ${this.dashCooldown.toFixed(1)}s`);
     this.dashText.setColor(this.dashCooldown <= 0 ? COLORS.good : COLORS.dim);
     this.powerText.setText(this.predatorTime > 0 ? `DEPREDADOR: ${this.predatorTime.toFixed(1)}s` : 'DEPREDADOR: --');
     this.powerText.setColor(this.predatorTime > 0 ? COLORS.accent : COLORS.dim);
     this.objectiveText.setText(this.sector === 1 ? `NÚCLEOS: ${this.sectorProgress} / ${this.sectorTarget}` :
       this.sector === 2 ? `SOBREVIVE: ${this.sectorTime}s RESTANTES` : 'CONSUME AL SOBERANO CON DEPREDADOR');
+    this.ammoText.setText(`BALAS: ${this.ammo}/${this.maxAmmo} [F]`);
+    this.ammoText.setColor(this.ammo > 0 ? '#ffd166' : COLORS.accent);
   }
 
   collectOrb(player, orb) {
@@ -518,6 +607,14 @@ class GameScene extends Phaser.Scene {
   }
 
   collectPickup(player, pickup) {
+    if (pickup.getData('type') === 'ammo') {
+      pickup.destroy();
+      this.ammo = Math.min(this.maxAmmo, this.ammo + 3);
+      this.burst.explode(18, player.x, player.y);
+      Sfx.blip(640, 0.12, 'square', 0.06);
+      this.updateHUD();
+      return;
+    }
     if (pickup.getData('type') === 'predator') {
       pickup.destroy();
       this.predatorTime = 7;
@@ -528,6 +625,67 @@ class GameScene extends Phaser.Scene {
       return;
     }
     this.collectShield(player, pickup);
+  }
+
+  reload() {
+    if (this.isOver || this.isPaused || this.ammo >= this.maxAmmo) return;
+    this.ammo = this.maxAmmo;
+    Sfx.blip(300, 0.2, 'triangle', 0.04);
+    this.updateHUD();
+  }
+
+  fire() {
+    if (this.isOver || this.isPaused || this.ammo <= 0) return;
+    let target = this.boss && this.boss.active ? this.boss : null;
+    let nearestDistance = Infinity;
+    this.hazards.children.each((hazard) => {
+      if (!hazard.active) return;
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, hazard.x, hazard.y);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        target = hazard;
+      }
+    });
+    const angle = target
+      ? Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y)
+      : 0;
+    const bullet = this.bullets.create(this.player.x, this.player.y, 'bullet').setDepth(11);
+    bullet.body.setCircle(5, 2, 2);
+    this.physics.velocityFromRotation(angle, 560, bullet.body.velocity);
+    bullet.setData('expiresAt', this.time.now + 1200);
+    this.ammo -= 1;
+    this.burst.explode(5, this.player.x, this.player.y);
+    Sfx.blip(760, 0.08, 'square', 0.045);
+    this.updateHUD();
+  }
+
+  handleBulletHazard(bullet, hazard) {
+    if (!bullet.active || !hazard.active) return;
+    bullet.destroy();
+    hazard.destroy();
+    this.kills += 1;
+    this.score += 45 + this.wave * 3;
+    this.creditsEarned += 2;
+    this.burst.explode(14, hazard.x, hazard.y);
+    Sfx.blip(920, 0.08, 'triangle', 0.04);
+    this.updateHUD();
+  }
+
+  handleBulletBoss(bullet, boss) {
+    if (!bullet.active || !boss.active) return;
+    bullet.destroy();
+    this.bossHealth -= 1;
+    this.score += 110;
+    this.creditsEarned += 4;
+    this.burst.explode(18, boss.x, boss.y);
+    Sfx.blip(220, 0.12, 'square', 0.06);
+    if (this.bossHealth <= 0) this.endGame(true);
+    this.updateHUD();
+  }
+
+  handleSpikeContact(player) {
+    this.takeHit(player, null);
+    this.player.setVelocity(-this.player.body.velocity.x * 0.7, -this.player.body.velocity.y * 0.7);
   }
 
   collectShield(player, pickup) {
@@ -607,7 +765,7 @@ class GameScene extends Phaser.Scene {
     this.sectorTime -= 1;
     this.bossHitCooldown = Math.max(0, this.bossHitCooldown - 1);
     if (this.time.now - this.lastOrbAt > 5000) this.combo = 0;
-    if (this.sectorTime <= 10) this.timeText.setColor(COLORS.warn);
+    if (this.sectorTime <= 10) this.timeText.setColor('#ffb36b');
     this.updateHUD();
     if (this.sector === 2 && this.sectorTime <= 0) this.advanceSector();
     if (this.sector === 1 && this.sectorTime <= 0) this.endGame(false);
@@ -643,6 +801,7 @@ class GameScene extends Phaser.Scene {
     this.timerEvent.remove();
     this.hazardEvent.remove();
     this.pickupEvent.remove();
+    this.ammoEvent.remove();
     this.trail.stop();
     const previousBest = this.registry.get('best') || 0;
     const isRecord = this.score > previousBest;
@@ -664,6 +823,9 @@ class GameScene extends Phaser.Scene {
       const bossAngle = Phaser.Math.Angle.Between(this.boss.x, this.boss.y, this.player.x, this.player.y);
       this.physics.velocityFromRotation(bossAngle, 34 + this.wave * 3, this.boss.body.velocity);
     }
+    this.bullets.children.each((bullet) => {
+      if (bullet.active && time > bullet.getData('expiresAt')) bullet.destroy();
+    });
     if (this.predatorTime > 0) {
       this.predatorTime = Math.max(0, this.predatorTime - delta / 1000);
       if (this.predatorTime === 0) {

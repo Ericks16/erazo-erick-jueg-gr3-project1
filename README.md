@@ -31,7 +31,11 @@ estático. No requiere instalación ni compilación.
 
 ## GitHub Pages
 
-En GitHub, entra en **Settings > Pages**, selecciona la rama principal y la
-carpeta `/ (root)`. El archivo `index.html` carga Phaser desde jsDelivr y el
-resto del juego usa rutas relativas, por lo que funciona directamente como
-sitio estático.
+El repositorio incluye un workflow oficial en
+`.github/workflows/pages.yml`. Cada push a `main` publica automáticamente la
+carpeta raíz como sitio estático. La URL pública es:
+
+`https://ericks16.github.io/erazo-erick-jueg-gr3-project1/`
+
+El archivo `index.html` carga Phaser desde jsDelivr y el resto del juego usa
+rutas relativas, por lo que no requiere un proceso de compilación.

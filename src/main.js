@@ -413,20 +413,24 @@ class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     // Haz stars flotando en el bg (permanent particles).
-    this.bgStars = scene ? scene.add.particles(0, 0, 'star', {
-      x: { min: 0, max: GAME_WIDTH },
-      y: { min: 0, max: GAME_HEIGHT },
-      speedX: { min: -4, max: 4 },
-      speedY: { min: -4, max: -1 },
-      gravityY: -6,
-      lifespan: { min: 3000, max: 7000 },
-      scale: { start: 0.5, end: 0 },
-      alpha: { start: 1, end: 0 },
-      frequency: 220,
-      tint: [0xffffff, COLORS.neonCyan],
-      quantity: 1
-    }).setDepth(-5);
-    this.bgStars.start();
+    if (scene) {
+      this.bgStars = scene.add.particles(0, 0, 'star', {
+        x: { min: 0, max: GAME_WIDTH },
+        y: { min: 0, max: GAME_HEIGHT },
+        speedX: { min: -4, max: 4 },
+        speedY: { min: -4, max: -1 },
+        gravityY: -6,
+        lifespan: { min: 3000, max: 7000 },
+        scale: { start: 0.5, end: 0 },
+        alpha: { start: 1, end: 0 },
+        frequency: 220,
+        tint: [0xffffff, COLORS.neonCyan],
+        quantity: 1
+      }).setDepth(-5);
+      this.bgStars.start();
+    } else {
+      this.bgStars = null;
+    }
 
     this.bgPulse = scene.add.particles(0, 0, 'star', {
       x: { min: 0, max: GAME_WIDTH },

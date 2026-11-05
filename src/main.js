@@ -386,7 +386,12 @@ class GameScene extends Phaser.Scene {
     /* Entrada ---------------------------------------------------------- */
     this.cursors = this.input.keyboard.createCursorKeys();
     // Teclas WASD
-    this.keys = this.input.keyboard.addKeys('W,A,S,D');
+    this.keys = {
+      w: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      a: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      s: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      d: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
+    };
     this.input.keyboard.on('keydown-P', this.togglePause, this);
 
     // Nueva entrada: boost espacial (barra espaciadora)
@@ -722,10 +727,10 @@ class GameScene extends Phaser.Scene {
     const cursorUp = this.cursors.up.isDown;
     const cursorDown = this.cursors.down.isDown;
 
-    const wDown = this.keys.w.isDown;
-    const aDown = this.keys.a.isDown;
-    const sDown = this.keys.s.isDown;
-    const dDown = this.keys.d.isDown;
+    const wDown = this.input.keyboard.checkDown(87) || this.keys.w.isDown;
+    const aDown = this.input.keyboard.checkDown(65) || this.keys.a.isDown;
+    const sDown = this.input.keyboard.checkDown(83) || this.keys.s.isDown;
+    const dDown = this.input.keyboard.checkDown(68) || this.keys.d.isDown;
 
     let x = 0;
     let y = 0;

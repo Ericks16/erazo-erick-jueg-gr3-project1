@@ -242,6 +242,43 @@ function drawBackground(scene) {
   grid.lineStyle(3, COLORS.gridBright, 0.8);
   grid.strokeRect(1, HUD_HEIGHT, GAME_WIDTH - 2, GAME_HEIGHT - HUD_HEIGHT - 2);
 
+  const moonGlow = scene.add.circle(640, 155, 94, 0x7d8cff, 0.07).setDepth(-11);
+  scene.tweens.add({ targets: moonGlow, scale: 1.08, alpha: 0.035, duration: 2800, yoyo: true, repeat: -1 });
+  const moon = scene.add.circle(640, 155, 58, 0xdbe7ff, 1).setDepth(-9);
+  scene.add.circle(620, 137, 11, 0xaab8dc, 0.2).setDepth(-8.5);
+  scene.add.circle(657, 172, 15, 0xaab8dc, 0.16).setDepth(-8.5);
+  scene.add.circle(662, 132, 7, 0xaab8dc, 0.18).setDepth(-8.5);
+  scene.add.circle(621, 178, 6, 0xaab8dc, 0.14).setDepth(-8.5);
+  scene.tweens.add({ targets: moon, y: 148, duration: 3600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+  const cloudLayer = scene.add.container(0, 0).setDepth(-7.5);
+  const makeCloud = (x, y, scale, alpha) => {
+    const cloud = scene.add.graphics();
+    cloud.fillStyle(0x26345c, alpha);
+    cloud.fillCircle(0, 12, 19);
+    cloud.fillCircle(24, 4, 27);
+    cloud.fillCircle(54, 14, 20);
+    cloud.fillRoundedRect(-18, 12, 92, 24, 12);
+    cloud.setPosition(x, y).setScale(scale);
+    cloudLayer.add(cloud);
+    return cloud;
+  };
+  const clouds = [
+    makeCloud(-150, 195, 1.25, 0.34),
+    makeCloud(260, 235, 0.85, 0.22),
+    makeCloud(680, 275, 1.05, 0.28)
+  ];
+  clouds.forEach((cloud, index) => {
+    scene.tweens.add({
+      targets: cloud,
+      x: cloud.x + 170 + index * 35,
+      duration: 18000 + index * 3500,
+      repeat: -1,
+      yoyo: true,
+      ease: 'Sine.easeInOut'
+    });
+  });
+
   const skyline = scene.add.graphics().setDepth(-8);
   const windows = [];
   skyline.fillStyle(0x101a36, 0.9);
@@ -254,23 +291,21 @@ function drawBackground(scene) {
       skyline.fillRect(x + 19, y, 4, 5);
       windows.push({ x: x + 7, y, color: (x + y) % 3 === 0 ? COLORS.yellow : COLORS.cyan });
     }
-    windows.slice(0, 22).forEach((windowLight, index) => {
-      const light = scene.add.rectangle(windowLight.x, windowLight.y, 4, 5, windowLight.color, 0.6)
-        .setDepth(-7);
-      scene.tweens.add({
-        targets: light, alpha: 0.12 + (index % 3) * 0.12,
-        duration: 700 + index * 90, yoyo: true, repeat: -1
-      });
-    });
-    for (let index = 0; index < 4; index += 1) {
-      const traffic = scene.add.rectangle(-80 - index * 160, 190 + index * 55, 74, 2,
-        index % 2 ? COLORS.pink : COLORS.cyan, 0.6).setDepth(-6);
-      scene.tweens.add({ targets: traffic, x: GAME_WIDTH + 100, duration: 5200 + index * 700, repeat: -1 });
-    }
     skyline.fillStyle(0x101a36, 0.9);
   }
-  const sun = scene.add.circle(680, 155, 70, COLORS.purple, 0.09).setDepth(-9);
-  scene.tweens.add({ targets: sun, scale: 1.18, alpha: 0.04, duration: 2200, yoyo: true, repeat: -1 });
+  windows.slice(0, 32).forEach((windowLight, index) => {
+    const light = scene.add.rectangle(windowLight.x, windowLight.y, 4, 5, windowLight.color, 0.6)
+      .setDepth(-7);
+    scene.tweens.add({
+      targets: light, alpha: 0.12 + (index % 3) * 0.12,
+      duration: 900 + index * 70, yoyo: true, repeat: -1
+    });
+  });
+  for (let index = 0; index < 4; index += 1) {
+    const traffic = scene.add.rectangle(-80 - index * 190, 190 + index * 55, 74, 2,
+      index % 2 ? COLORS.pink : COLORS.cyan, 0.6).setDepth(-6);
+    scene.tweens.add({ targets: traffic, x: GAME_WIDTH + 100, duration: 6200 + index * 800, repeat: -1 });
+  }
   const horizon = scene.add.rectangle(400, GAME_HEIGHT - 82, GAME_WIDTH, 2, COLORS.pink, 0.7).setDepth(-7);
   scene.tweens.add({ targets: horizon, alpha: 0.25, duration: 1100, yoyo: true, repeat: -1 });
 }
@@ -279,12 +314,12 @@ function addStars(scene) {
   const stars = scene.add.particles(0, 0, 'star', {
     x: { min: 0, max: GAME_WIDTH },
     y: { min: HUD_HEIGHT, max: GAME_HEIGHT },
-    speedX: { min: -5, max: 5 },
-    speedY: { min: -8, max: -2 },
-    lifespan: { min: 3500, max: 7000 },
-    scale: { start: 0.8, end: 0 },
-    alpha: { start: 0.8, end: 0 },
-    frequency: 180,
+    speedX: { min: -1, max: 1 },
+    speedY: { min: -1, max: 1 },
+    lifespan: { min: 7000, max: 12000 },
+    scale: { start: 0.28, end: 0.08 },
+    alpha: { start: 0.28, end: 0 },
+    frequency: 950,
     quantity: 1,
     tint: [0xffffff, COLORS.cyan, COLORS.purple]
   }).setDepth(-5);

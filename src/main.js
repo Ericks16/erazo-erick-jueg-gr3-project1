@@ -9,13 +9,13 @@ const GAME_HEIGHT = 600;
 
 const PLAYER_SIZE = 42;
 const PLAYER_COLOR = 0xff5d8f;
-const PLAYER_SPEED = 260;
-const PLAYER_DRAG = 1200;
+const PLAYER_SPEED = 300;
+const PLAYER_DRAG = 1500;
 
-const ROUND_TIME = 60;
-const START_LIVES = 3;
-const ORB_COUNT = 3;
-const MAX_HAZARDS = 9;
+const ROUND_TIME = 90;
+const START_LIVES = 5;
+const ORB_COUNT = 5;
+const MAX_HAZARDS = 15;
 
 const COLORS = {
   bg: '#101423',
@@ -27,7 +27,9 @@ const COLORS = {
   dim: '#8a93b2',
   accent: '#ff5d8f',
   good: '#7ef0c0',
-  warn: '#ff9f68'
+  warn: '#ff9f68',
+  bgGradientStart: '#1a1f33',
+  bgGradientEnd: '#0b0e18'
 };
 
 const FONT = 'Consolas, "Courier New", monospace';
@@ -67,6 +69,23 @@ const Sfx = {
     gain.connect(this.ctx.destination);
     osc.start(now);
     osc.stop(now + duration);
+  },
+
+  // Nuevo: sonido de nivel completado
+  levelComplete() {
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 1);
   }
 };
 
@@ -112,6 +131,14 @@ function ensureTextures(scene) {
   make('spark', 8, 8, (g) => {
     g.fillStyle(0xffffff, 1);
     g.fillCircle(4, 4, 4);
+  });
+
+  // Nueva textura: efecto de brillo para el jugador
+  make('playerGlow', PLAYER_SIZE, PLAYER_SIZE, (g) => {
+    g.fillStyle(0xff5d8f, 0.6);
+    g.fillRect(0, 0, PLAYER_SIZE, PLAYER_SIZE);
+    g.fillStyle(0xffffff, 0.3);
+    g.fillRect(4, 4, 8, 8);
   });
 }
 
@@ -189,6 +216,36 @@ class MenuScene extends Phaser.Scene {
       angle: 360,
       duration: 3000,
       repeat: -1
+    });
+
+    // Lore de Neon Drift - Historia del juego
+    const loreLines = [
+      'EN EL AÑO 2142, EN LA CIUDAD NEON-7...',
+      'UN CONDUCTOR VALIENTE LUCHA POR SOBREVIVIR',
+      'RECOGIENDÓN ENERGÍA OSCURES Y EVITANDO PELIGROS',
+      'CUYO OBJETIVO ES ALCANZAR LA LUZ AL FINAL DE CADA RONDA'
+    ];
+    loreLines.forEach((line, index) => {
+      const style = { fontFamily: FONT, fontSize: index === 0 ? '24px' : '16px', color: index === 0 ? COLORS.accent : COLORS.dim };
+      this.add
+        .text(GAME_WIDTH / 2, 200 + index * 28, line, style)
+        .setOrigin(0.5);
+    });
+
+    // Instrucciones de control
+    const controlsLines = [
+      'FLECHAS / WASD: MOVERSE',
+      'ESPACIO: REFORZAR MOTORES (BONUS)',
+      'P: PAUSA / REANUDAR'
+    ];
+    controlsLines.forEach((line, index) => {
+      this.add
+        .text(GAME_WIDTH / 2, 360 + index * 22, line, {
+          fontFamily: FONT,
+          fontSize: '16px',
+          color: COLORS.text
+        })
+        .setOrigin(0.5);
     });
 
     const lines = [
@@ -329,6 +386,11 @@ class GameScene extends Phaser.Scene {
     /* Entrada ---------------------------------------------------------- */
     this.cursors = this.input.keyboard.createCursorKeys();
     this.input.keyboard.on('keydown-P', this.togglePause, this);
+
+    // Nueva entrada: boost espacial (barra espaciadora)
+    this.input.keyboard.on('keydown-SPACE', this.activateBoost, this);
+
+    /* Reloj ------------------------------------------------------------ */
 
     /* Reloj ------------------------------------------------------------ */
     this.timerEvent = this.time.addEvent({
@@ -572,6 +634,30 @@ class GameScene extends Phaser.Scene {
     this.pauseLayer.setVisible(this.isPaused);
   }
 
+  // Nuevo: Activa un boost temporal al presionar ESPACIO
+  activateBoost() {
+    if (this.isOver || this.isPaused) return;
+
+    // Efecto visual de boost
+    this.player.setTint(0x00ffff);
+    this.time.delayedCall(200, () => {
+      this.player.setTint(PLAYER_COLOR);
+    });
+
+    // Aumentar velocidad temporalmente
+    const boostSpeed = PLAYER_SPEED * 1.5;
+    this.player.setVelocity(
+      this.player.velocity.x * 1.5,
+      this.player.velocity.y * 1.5
+    );
+    this.time.delayedCall(800, () => {
+      this.player.setVelocity(
+        (this.player.velocity.x / 1.5),
+        (this.player.velocity.y / 1.5)
+      );
+    });
+  }
+
   cleanupPauseMemory() {
     this.pauseTtl = 0;
     if (this.pauseTtlTimer) {
@@ -628,21 +714,27 @@ class GameScene extends Phaser.Scene {
   update() {
     if (!this.player || this.isOver || this.isPaused) return;
 
-    const left = this.cursors.left.isDown;
-    const right = this.cursors.right.isDown;
-    const up = this.cursors.up.isDown;
-    const down = this.cursors.down.isDown;
+    // Soporte para teclas de flecha y WASD (W,A,S,D)
+    const cursorLeft = this.cursors.left.isDown;
+    const cursorRight = this.cursors.right.isDown;
+    const cursorUp = this.cursors.up.isDown;
+    const cursorDown = this.cursors.down.isDown;
+
+    const wDown = this.input.keyboard.checkDown(87); // W
+    const aDown = this.input.keyboard.checkDown(65); // A
+    const sDown = this.input.keyboard.checkDown(83); // S
+    const dDown = this.input.keyboard.checkDown(68); // D
 
     let x = 0;
     let y = 0;
 
-    if (left) x -= 1;
-    if (right) x += 1;
-    if (up) y -= 1;
-    if (down) y += 1;
+    if (cursorLeft || aDown) x -= 1;
+    if (cursorRight || dDown) x += 1;
+    if (cursorUp || wDown) y -= 1;
+    if (cursorDown || sDown) y += 1;
 
     if (x !== 0 || y !== 0) {
-      // Se suman los vectores y se normaliza: las diagonales también van a 260 px/s.
+      // Se suman los vectores y se normaliza: las diagonales también van a PLAYER_SPEED px/s.
       const length = Math.sqrt(x * x + y * y);
       this.player.setVelocity(
         (x / length) * PLAYER_SPEED,

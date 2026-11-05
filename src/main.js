@@ -4,10 +4,11 @@ const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 const HUD_HEIGHT = 82;
 const PLAYER_SPEED = 285;
-const ROUND_TIME = 90;
+const ROUND_TIME = 45;
 const START_LIVES = 3;
 const ORB_COUNT = 5;
 const MAX_HAZARDS = 24;
+const TOTAL_SECTORS = 3;
 const FONT = 'Consolas, "Courier New", monospace';
 
 const COLORS = {
@@ -36,6 +37,8 @@ const Sfx = {
       if (this.ctx.state === 'suspended') this.ctx.resume();
       return;
     }
+
+
 
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
@@ -129,6 +132,24 @@ function ensureTextures(scene) {
     g.closePath(); g.fillStyle(COLORS.cyan, 0.45); g.fillPath(); g.strokePath();
     g.lineStyle(1, 0xffffff, 0.7);
     g.strokeCircle(27, 27, 12);
+  });
+
+  make('boss', 96, 96, (g) => {
+    g.fillStyle(COLORS.purple, 0.16);
+    g.fillCircle(48, 48, 46);
+    g.fillStyle(0x17143b, 1);
+    g.fillCircle(48, 48, 34);
+    g.lineStyle(4, COLORS.pink, 1);
+    g.strokeCircle(48, 48, 38);
+    g.lineStyle(2, COLORS.cyan, 1);
+    g.strokeCircle(48, 48, 20);
+    g.fillStyle(COLORS.yellow, 1);
+    g.fillCircle(48, 48, 7);
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index * Math.PI / 4;
+      g.lineBetween(48 + Math.cos(angle) * 29, 48 + Math.sin(angle) * 29,
+        48 + Math.cos(angle) * 47, 48 + Math.sin(angle) * 47);
+    }
   });
 
   make('shield', 42, 42, (g) => {
@@ -235,39 +256,40 @@ class MenuScene extends Phaser.Scene {
     if (!this.registry.has('credits')) this.registry.set('credits', 0);
     if (!this.registry.has('upgrades')) this.registry.set('upgrades', { speed: 0, magnet: 0, armor: 0 });
     Sfx.startMusic();
-    const title = this.add.text(400, 105, 'NEON DRIFT', {
-      fontFamily: FONT, fontSize: '68px', color: COLORS.accent, fontStyle: 'bold'
+    const title = this.add.text(400, 82, 'NEON DRIFT', {
+      fontFamily: FONT, fontSize: '58px', color: COLORS.accent, fontStyle: 'bold'
     }).setOrigin(0.5);
     title.setShadow(0, 0, COLORS.accent, 20, true, true);
-    this.add.text(400, 166, 'LA ÚLTIMA LUZ DE NEON-7', {
+    this.add.text(400, 135, 'LA ÚLTIMA LUZ DE NEON-7', {
       fontFamily: FONT, fontSize: '18px', color: '#4cc9f0'
     }).setOrigin(0.5);
 
     const lore = [
-      'AÑO 2142. La ciudad consume energía más rápido de lo que puede producirla.',
-      'Tú eres el último piloto de la red DRIFT: recoge núcleos de luz,',
-      'sobrevive a los drones de seguridad y reactiva el corazón de la ciudad.',
-      '',
-      'Cada núcleo aumenta tu combo. Cada oleada acelera a los drones.',
-      'El escudo aparece cuando más lo necesitas. No dejes que la red muera.'
+      'AÑO 2142 · NEON-7 ESTÁ MURIENDO.',
+      'La inteligencia artificial SOBERANO tomó el corazón de la ciudad.',
+      'Tú eres el último piloto de DRIFT. Cruza tres sectores,',
+      'roba sus núcleos y destruye al dios que controla la red.'
     ];
-    lore.forEach((line, index) => this.add.text(400, 225 + index * 22, line, {
-      fontFamily: FONT, fontSize: index === 0 ? '15px' : '14px',
+    lore.forEach((line, index) => this.add.text(400, 185 + index * 22, line, {
+      fontFamily: FONT, fontSize: index === 0 ? '16px' : '14px',
       color: index === 0 ? COLORS.text : COLORS.dim, align: 'center'
     }).setOrigin(0.5));
 
-    const demo = this.add.image(400, 400, 'player');
+    const demo = this.add.image(400, 365, 'player');
     this.tweens.add({ targets: demo, y: '+=10', duration: 900, yoyo: true, repeat: -1 });
     [300, 500].forEach((x) => {
-      const orb = this.add.image(x, 400, 'orb');
+      const orb = this.add.image(x, 365, 'orb');
       this.tweens.add({ targets: orb, angle: 360, duration: 3500, repeat: -1 });
     });
-    const prompt = this.add.text(400, 500, 'PULSA ESPACIO O TOCA PARA INICIAR', {
+    const prompt = this.add.text(400, 470, 'PULSA ESPACIO O TOCA PARA INICIAR', {
       fontFamily: FONT, fontSize: '20px', color: COLORS.good, fontStyle: 'bold'
     }).setOrigin(0.5);
     this.tweens.add({ targets: prompt, alpha: 0.3, duration: 700, yoyo: true, repeat: -1 });
-    this.add.text(400, 548, `CRÉDITOS ${this.registry.get('credits')}  ·  T: TIENDA  ·  M: MÚSICA  ·  FLECHAS/WASD MOVER`, {
+    this.add.text(400, 530, `CAMPAÑA 3 ACTOS  ·  T: TIENDA  ·  M: MÚSICA  ·  FLECHAS/WASD MOVER`, {
       fontFamily: FONT, fontSize: '12px', color: COLORS.dim
+    }).setOrigin(0.5);
+    this.add.text(400, 555, `CRÉDITOS ${this.registry.get('credits')}`, {
+      fontFamily: FONT, fontSize: '12px', color: '#ffd166'
     }).setOrigin(0.5);
 
     const start = () => {
@@ -299,7 +321,16 @@ class GameScene extends Phaser.Scene {
     this.creditsEarned = 0;
     this.lives = START_LIVES;
     this.collected = 0;
-    this.timeLeft = ROUND_TIME;
+    this.sector = 1;
+    this.sectorTime = ROUND_TIME;
+    this.sectorProgress = 0;
+    this.sectorTarget = 12;
+    this.sectorName = 'DISTRITO CERO';
+    this.bossHealth = 0;
+    this.bossMaxHealth = 0;
+    this.bossHitCooldown = 0;
+    this.boss = null;
+    this.kills = 0;
     this.combo = 0;
     this.wave = 1;
     this.invulnerable = false;
@@ -319,9 +350,11 @@ class GameScene extends Phaser.Scene {
     this.orbs = this.physics.add.group({ allowGravity: false, immovable: true });
     this.hazards = this.physics.add.group({ allowGravity: false, bounce: 1, collideWorldBounds: true });
     this.pickups = this.physics.add.group({ allowGravity: false, immovable: true });
+    this.bossGroup = this.physics.add.group({ allowGravity: false, immovable: true });
     this.physics.add.overlap(this.player, this.orbs, this.collectOrb, null, this);
     this.physics.add.overlap(this.player, this.pickups, this.collectPickup, null, this);
     this.physics.add.overlap(this.player, this.hazards, this.handleHazardContact, null, this);
+    this.physics.add.overlap(this.player, this.bossGroup, this.handleBossContact, null, this);
 
     this.trail = this.add.particles(0, 0, 'spark', {
       speed: { min: 8, max: 18 }, lifespan: 350, scale: { start: 0.7, end: 0 },
@@ -347,7 +380,7 @@ class GameScene extends Phaser.Scene {
     for (let index = 0; index < ORB_COUNT + this.upgrades.magnet; index += 1) this.spawnOrb();
     for (let index = 0; index < 5; index += 1) this.spawnHazard(index * 3);
     this.timerEvent = this.time.addEvent({ delay: 1000, loop: true, callback: this.tickClock, callbackScope: this });
-    this.hazardEvent = this.time.addEvent({ delay: 4200, loop: true, callback: this.progressDifficulty, callbackScope: this });
+    this.hazardEvent = this.time.addEvent({ delay: 3600, loop: true, callback: this.progressDifficulty, callbackScope: this });
     this.pickupEvent = this.time.addEvent({ delay: 11000, loop: true, callback: this.spawnPredator, callbackScope: this });
   }
 
@@ -356,11 +389,12 @@ class GameScene extends Phaser.Scene {
     this.add.text(22, 14, 'PUNTOS', { fontFamily: FONT, fontSize: '13px', color: COLORS.dim }).setDepth(20);
     this.scoreText = this.add.text(22, 31, '0', { fontFamily: FONT, fontSize: '22px', color: COLORS.text }).setDepth(20);
     this.livesText = this.add.text(165, 20, `VIDAS ${this.lives}`, { fontFamily: FONT, fontSize: '16px', color: COLORS.text }).setDepth(20);
-    this.waveText = this.add.text(310, 20, 'OLEADA 1', { fontFamily: FONT, fontSize: '16px', color: '#4cc9f0' }).setDepth(20);
-    this.comboText = this.add.text(470, 20, 'COMBO x0', { fontFamily: FONT, fontSize: '16px', color: '#ffd166' }).setDepth(20);
-    this.timeText = this.add.text(778, 20, `TIEMPO ${this.timeLeft}`, { fontFamily: FONT, fontSize: '16px', color: COLORS.text }).setOrigin(1, 0).setDepth(20);
+    this.waveText = this.add.text(280, 20, 'ACTO 1', { fontFamily: FONT, fontSize: '13px', color: '#4cc9f0' }).setDepth(20);
+    this.comboText = this.add.text(545, 20, 'COMBO x0', { fontFamily: FONT, fontSize: '13px', color: '#ffd166' }).setDepth(20);
+    this.timeText = this.add.text(778, 20, `SECTOR ${this.sectorTime}`, { fontFamily: FONT, fontSize: '16px', color: COLORS.text }).setOrigin(1, 0).setDepth(20);
     this.dashText = this.add.text(778, 51, 'DASH LISTO [ESPACIO]', { fontFamily: FONT, fontSize: '11px', color: COLORS.good }).setOrigin(1, 0).setDepth(20);
     this.powerText = this.add.text(22, 65, 'DEPREDADOR: --', { fontFamily: FONT, fontSize: '11px', color: COLORS.dim }).setDepth(20);
+    this.objectiveText = this.add.text(280, 51, 'OBJETIVO: 0 / 12', { fontFamily: FONT, fontSize: '11px', color: COLORS.text }).setDepth(20);
 
     const overlay = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.78).setOrigin(0);
     const title = this.add.text(400, 275, 'PAUSA', { fontFamily: FONT, fontSize: '56px', color: COLORS.accent, fontStyle: 'bold' }).setOrigin(0.5);
@@ -415,17 +449,53 @@ class GameScene extends Phaser.Scene {
     Sfx.blip(420, 0.14, 'square', 0.04);
   }
 
+  advanceSector() {
+    if (this.sector >= TOTAL_SECTORS || this.isOver) return;
+    this.sector += 1;
+    this.sectorTime = ROUND_TIME;
+    this.sectorProgress = 0;
+    this.sectorTarget = this.sector === 2 ? 45 : 10;
+    this.sectorName = this.sector === 2 ? 'LA FOSA' : 'NÚCLEO SOBERANO';
+    this.hazards.clear(true, true);
+    for (let index = 0; index < 5 + this.sector * 2; index += 1) this.spawnHazard(index * 5);
+    if (this.sector === 3) this.spawnBoss();
+    this.cameras.main.flash(260, 181, 106, 255);
+    this.showSectorMessage();
+    Sfx.blip(520, 0.35, 'sawtooth', 0.08);
+    this.updateHUD();
+  }
+
+  showSectorMessage() {
+    const message = this.add.text(400, 270, `ACTO ${this.sector}\n${this.sectorName}`, {
+      fontFamily: FONT, fontSize: '32px', color: COLORS.accent, fontStyle: 'bold',
+      align: 'center', stroke: '#090d1a', strokeThickness: 8
+    }).setOrigin(0.5).setDepth(25);
+    this.tweens.add({ targets: message, alpha: 0, y: 220, duration: 1800, ease: 'Cubic.easeIn', onComplete: () => message.destroy() });
+  }
+
+  spawnBoss() {
+    this.bossMaxHealth = 12 + this.upgrades.armor * 2;
+    this.bossHealth = this.bossMaxHealth;
+    this.boss = this.bossGroup.create(400, 175, 'boss').setDepth(8);
+    this.boss.body.setCircle(32, 16, 16);
+    this.tweens.add({ targets: this.boss, angle: 360, duration: 3000, repeat: -1 });
+    this.tweens.add({ targets: this.boss, scale: { from: 0.9, to: 1.08 }, duration: 700, yoyo: true, repeat: -1 });
+  }
+
   updateHUD() {
     this.scoreText.setText(String(this.score));
     this.livesText.setText(`VIDAS ${this.lives}`);
     this.livesText.setColor(this.lives === 1 ? COLORS.accent : COLORS.text);
     this.waveText.setText(`OLEADA ${this.wave}`);
     this.comboText.setText(`COMBO x${this.combo}`);
-    this.timeText.setText(`TIEMPO ${this.timeLeft}`);
+    this.waveText.setText(`ACTO ${this.sector} · ${this.sectorName}`);
+    this.timeText.setText(this.sector === 3 ? `JEFE ${this.bossHealth}/${this.bossMaxHealth}` : `SECTOR ${this.sectorTime}`);
     this.dashText.setText(this.dashCooldown <= 0 ? 'DASH LISTO [ESPACIO]' : `DASH ${this.dashCooldown.toFixed(1)}s`);
     this.dashText.setColor(this.dashCooldown <= 0 ? COLORS.good : COLORS.dim);
     this.powerText.setText(this.predatorTime > 0 ? `DEPREDADOR: ${this.predatorTime.toFixed(1)}s` : 'DEPREDADOR: --');
     this.powerText.setColor(this.predatorTime > 0 ? COLORS.accent : COLORS.dim);
+    this.objectiveText.setText(this.sector === 1 ? `NÚCLEOS: ${this.sectorProgress} / ${this.sectorTarget}` :
+      this.sector === 2 ? `SOBREVIVE: ${this.sectorTime}s RESTANTES` : 'CONSUME AL SOBERANO CON DEPREDADOR');
   }
 
   collectOrb(player, orb) {
@@ -434,6 +504,7 @@ class GameScene extends Phaser.Scene {
     const { x, y } = orb;
     orb.destroy();
     this.collected += 1;
+    this.sectorProgress += 1;
     this.combo = this.time.now - this.lastOrbAt < 5000 ? Math.min(this.combo + 1, 9) : 1;
     this.lastOrbAt = this.time.now;
     this.score += 10 + this.combo * 2;
@@ -442,6 +513,7 @@ class GameScene extends Phaser.Scene {
     Sfx.blip(700 + this.combo * 45, 0.08);
     this.spawnOrb();
     if (this.collected % 8 === 0) this.spawnShield();
+    if (this.sector === 1 && this.sectorProgress >= this.sectorTarget) this.advanceSector();
     this.updateHUD();
   }
 
@@ -476,12 +548,28 @@ class GameScene extends Phaser.Scene {
       hazard.destroy();
       this.score += 25 + this.wave * 3;
       this.creditsEarned += 3;
+      this.kills += 1;
       this.burst.explode(20, x, y);
       Sfx.blip(980, 0.08, 'square', 0.05);
       this.updateHUD();
       return;
     }
     this.takeHit(player, hazard);
+  }
+
+  handleBossContact(player, boss) {
+    if (this.predatorTime > 0 && this.bossHitCooldown <= 0) {
+      this.bossHealth -= 1;
+      this.score += 150;
+      this.creditsEarned += 8;
+      this.bossHitCooldown = 0.7;
+      this.burst.explode(35, boss.x, boss.y);
+      this.cameras.main.shake(120, 0.008);
+      Sfx.blip(260, 0.16, 'square', 0.08);
+      if (this.bossHealth <= 0) this.endGame(true);
+      return;
+    }
+    if (this.predatorTime <= 0) this.takeHit(player, boss);
   }
 
   takeHit(player, hazard) {
@@ -516,11 +604,14 @@ class GameScene extends Phaser.Scene {
 
   tickClock() {
     if (this.isOver || this.isPaused) return;
-    this.timeLeft -= 1;
+    this.sectorTime -= 1;
+    this.bossHitCooldown = Math.max(0, this.bossHitCooldown - 1);
     if (this.time.now - this.lastOrbAt > 5000) this.combo = 0;
-    if (this.timeLeft <= 10) this.timeText.setColor(COLORS.warn);
+    if (this.sectorTime <= 10) this.timeText.setColor(COLORS.warn);
     this.updateHUD();
-    if (this.timeLeft <= 0) this.endGame(true);
+    if (this.sector === 2 && this.sectorTime <= 0) this.advanceSector();
+    if (this.sector === 1 && this.sectorTime <= 0) this.endGame(false);
+    if (this.sector === 3 && this.sectorTime <= 0) this.endGame(false);
   }
 
   dash() {
@@ -561,13 +652,18 @@ class GameScene extends Phaser.Scene {
     Sfx.blip(won ? 880 : 150, 0.3, won ? 'sine' : 'sawtooth', 0.07);
     this.cameras.main.flash(180, won ? 126 : 255, won ? 240 : 93, won ? 192 : 143);
     this.time.delayedCall(650, () => this.scene.start('Result', {
-      score: this.score, credits: this.creditsEarned, best, isRecord, won, wave: this.wave, collected: this.collected
+      score: this.score, credits: this.creditsEarned, best, isRecord, won, sector: this.sector, collected: this.collected
     }));
   }
 
   update(time, delta) {
     if (this.isOver || this.isPaused) return;
     this.dashCooldown = Math.max(0, this.dashCooldown - delta / 1000);
+    this.bossHitCooldown = Math.max(0, this.bossHitCooldown - delta / 1000);
+    if (this.boss && this.boss.active) {
+      const bossAngle = Phaser.Math.Angle.Between(this.boss.x, this.boss.y, this.player.x, this.player.y);
+      this.physics.velocityFromRotation(bossAngle, 34 + this.wave * 3, this.boss.body.velocity);
+    }
     if (this.predatorTime > 0) {
       this.predatorTime = Math.max(0, this.predatorTime - delta / 1000);
       if (this.predatorTime === 0) {
@@ -597,7 +693,7 @@ class ResultScene extends Phaser.Scene {
     this.bestScore = data.best || 0;
     this.isRecord = Boolean(data.isRecord);
     this.won = Boolean(data.won);
-    this.wave = data.wave || 1;
+    this.sector = data.sector || 1;
     this.collected = data.collected || 0;
   }
 
@@ -607,15 +703,15 @@ class ResultScene extends Phaser.Scene {
     addStars(this);
     this.cameras.main.fadeIn(250, 9, 13, 26);
     const accent = this.won ? COLORS.good : COLORS.accent;
-    const title = this.add.text(400, 155, this.won ? 'CIUDAD REACTIVADA' : 'SEÑAL PERDIDA', {
+    const title = this.add.text(400, 145, this.won ? 'SOBERANO DESTRUIDO' : 'SEÑAL PERDIDA', {
       fontFamily: FONT, fontSize: this.won ? '42px' : '56px', color: accent, fontStyle: 'bold',
       align: 'center'
     }).setOrigin(0.5);
     title.setShadow(0, 0, accent, 18, true, true);
-    this.add.text(400, 220, this.won ? 'Neon-7 vuelve a respirar gracias a ti.' : 'La oscuridad tomó el último circuito.', {
+    this.add.text(400, 210, this.won ? 'Has roto el núcleo de la IA y liberado Neon-7.' : 'La oscuridad tomó el último circuito.', {
       fontFamily: FONT, fontSize: '17px', color: COLORS.text
     }).setOrigin(0.5);
-    this.add.text(400, 300, `PUNTOS  ${this.finalScore}\nNÚCLEOS  ${this.collected}\nOLEADA  ${this.wave}\nCRÉDITOS +${this.credits}`, {
+    this.add.text(400, 300, `PUNTOS  ${this.finalScore}\nNÚCLEOS  ${this.collected}\nACTO ALCANZADO  ${this.sector}\nCRÉDITOS +${this.credits}`, {
       fontFamily: FONT, fontSize: '24px', color: COLORS.text, align: 'center', lineSpacing: 12
     }).setOrigin(0.5);
     this.add.text(400, 405, this.isRecord ? '¡NUEVO RÉCORD!' : `RÉCORD ${this.bestScore}`, {

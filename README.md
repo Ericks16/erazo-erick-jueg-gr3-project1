@@ -1,8 +1,8 @@
 # Neon Drift
 
-Arcade de supervivencia cyberpunk creado con Phaser 3. El piloto debe recoger
-núcleos de energía, mantener el combo y sobrevivir a oleadas de drones durante
-90 segundos para reactivar la ciudad Neon-7.
+Campaña arcade cyberpunk creada con Phaser 3. El piloto debe cruzar tres actos,
+recoger núcleos, sobrevivir a oleadas cada vez más agresivas y destruir al
+Soberano, la inteligencia artificial que controla Neon-7.
 
 ## Ejecutar
 
@@ -28,6 +28,13 @@ estático. No requiere instalación ni compilación.
 - Las oleadas generan más drones y aumentan su velocidad progresivamente.
 - La tienda permite gastar créditos en turbo, imán de núcleos y blindaje.
   Las mejoras quedan guardadas durante la sesión del navegador.
+
+## Campaña
+
+1. **Distrito Cero:** recoge 12 núcleos antes de que se cierre el sector.
+2. **La Fosa:** sobrevive 45 segundos con una densidad creciente de drones.
+3. **Núcleo Soberano:** consigue un objeto Depredador y consume al jefe para
+   destruirlo. El contacto normal con el jefe causa daño.
 
 ## GitHub Pages
 

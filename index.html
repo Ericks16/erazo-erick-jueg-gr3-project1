@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Neon Drift: juego arcade 2D hecho con Phaser 3, sin assets externos." />
+  <meta name="description" content="Neon Drift: arcade de supervivencia cyberpunk hecho con Phaser 3." />
   <title>Neon Drift · Juego 2D con Phaser 3</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <style>
@@ -21,18 +21,21 @@
 
     #game {
       position: relative;
-      width: 800px;
-      height: 600px;
+      width: min(800px, 100vw);
+      height: min(600px, 100vh);
       line-height: 0;
       border-radius: 10px;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
       overflow: hidden;
+      aspect-ratio: 4 / 3;
       user-select: none;
       touch-action: none;
     }
 
     #game canvas {
       display: block;
+      width: 100%;
+      height: 100%;
     }
   </style>
 </head>

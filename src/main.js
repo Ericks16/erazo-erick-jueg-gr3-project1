@@ -1,515 +1,341 @@
-/* =========================================================================
-   NEON DRIFT · juego arcade 2D con Phaser 3.80.1
-   Todo el arte, los sonidos y los efectos se generan por código:
-   no hay imágenes, fuentes ni audios externos.
-   ========================================================================= */
+/* NEON DRIFT - Arcade de supervivencia sin assets externos. */
 
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
-
-const PLAYER_SIZE = 42;
-const PLAYER_COLOR = 0xff5d8f;
-const PLAYER_SPEED = 300;
-const PLAYER_DRAG = 1500;
-
+const HUD_HEIGHT = 82;
+const PLAYER_SPEED = 285;
 const ROUND_TIME = 90;
-const START_LIVES = 5;
+const START_LIVES = 3;
 const ORB_COUNT = 5;
-const MAX_HAZARDS = 15;
-
-const COLORS = {
-  bg: '#0b0e18',
-  bgInt: 0x0b0e18,
-  grid: 0x1c2540,
-  gridBright: 0x2a3a66,
-  orb: 0xffd166,
-  hazard: 0x4cc9f0,
-  hazardGlow: 0x7fe3ff,
-  text: '#e8ecf8',
-  dim: '#8a93b2',
-  accent: '#ff5d8f',
-  good: '#7ef0c0',
-  warn: '#ff9f68',
-  bgGradientStart: '#1a1f33',
-  bgGradientEnd: '#0b0e18',
-  neonPink: 0xff5d8f,
-  neonCyan: 0x4cc9f0,
-  neonYellow: 0xffd166,
-  neonGreen: 0x7ef0c0,
-  neonPurple: 0xb56aff,
-  scanline: 0x05070d
-};
-
+const MAX_HAZARDS = 24;
 const FONT = 'Consolas, "Courier New", monospace';
 
-/* ------------------------------------------------------------------ audio */
+const COLORS = {
+  bg: '#090d1a',
+  bgInt: 0x090d1a,
+  grid: 0x1d2b4d,
+  gridBright: 0x355083,
+  text: '#e8ecf8',
+  dim: '#8793b5',
+  accent: '#ff5d8f',
+  good: '#7ef0c0',
+  warn: '#ffb36b',
+  cyan: 0x4cc9f0,
+  yellow: 0xffd166,
+  pink: 0xff5d8f,
+  purple: 0xb56aff
+};
+
 const Sfx = {
   ctx: null,
-
+  musicTimer: null,
+  musicStep: 0,
+  musicEnabled: true,
   init() {
     if (this.ctx) {
       if (this.ctx.state === 'suspended') this.ctx.resume();
       return;
     }
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
     try {
-      this.ctx = new AudioCtx();
-    } catch (err) {
+      this.ctx = new AudioContext();
+    } catch (error) {
       this.ctx = null;
     }
+
   },
-
-  blip(frequency = 660, duration = 0.1, type = 'triangle', volume = 0.05) {
+  blip(frequency, duration = 0.1, type = 'triangle', volume = 0.05) {
     if (!this.ctx) return;
-    if (this.ctx.state === 'suspended') this.ctx.resume();
-
     const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
+    const oscillator = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-
-    osc.type = type;
-    osc.frequency.setValueAtTime(frequency, now);
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, now);
     gain.gain.setValueAtTime(volume, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-    osc.connect(gain);
+    oscillator.connect(gain);
     gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + duration);
+    oscillator.start(now);
+    oscillator.stop(now + duration);
   },
-
-  // Nuevo: sonido de nivel completado
-  levelComplete() {
-    if (!this.ctx) return;
-    if (this.ctx.state === 'suspended') this.ctx.resume();
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, now);
-    gain.gain.setValueAtTime(0.1, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 1);
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-    osc.start(now);
-    osc.stop(now + 1);
+  startMusic() {
+    this.init();
+    if (!this.ctx || this.musicTimer || !this.musicEnabled) return;
+    const notes = [110, 110, 164.81, 146.83, 110, 123.47, 164.81, 185];
+    this.musicTimer = window.setInterval(() => {
+      if (!this.ctx || this.ctx.state === 'suspended') return;
+      const note = notes[this.musicStep % notes.length];
+      this.blip(note, 0.24, 'sawtooth', 0.018);
+      if (this.musicStep % 4 === 0) this.blip(note * 2, 0.12, 'triangle', 0.012);
+      this.musicStep += 1;
+    }, 280);
+  },
+  stopMusic() {
+    if (this.musicTimer) {
+      window.clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+  },
+  toggleMusic() {
+    this.musicEnabled = !this.musicEnabled;
+    if (this.musicEnabled) this.startMusic();
+    else this.stopMusic();
+    return this.musicEnabled;
   }
 };
 
-/* --------------------------------------------------------------- texturas */
 function ensureTextures(scene) {
   const make = (key, width, height, draw) => {
     if (scene.textures.exists(key)) return;
-    const g = scene.make.graphics({ x: 0, y: 0, add: false });
-    draw(g);
-    g.generateTexture(key, width, height);
-    g.destroy();
+    const graphics = scene.make.graphics({ x: 0, y: 0, add: false });
+    draw(graphics);
+    graphics.generateTexture(key, width, height);
+    graphics.destroy();
   };
 
-  // Jugador: rectángulo neon con borde glow y micro flashes internos.
-  make('player', PLAYER_SIZE + 8, PLAYER_SIZE + 8, (g) => {
-    // Halo exterior
-    g.fillStyle(COLORS.neonPink, 0.35);
-    g.fillCircle(25, 25, 27);
-    g.fillStyle(COLORS.neonPink, 0.55);
-    g.fillCircle(25, 25, 22);
-    // Cuadrado central con borde negativo
+  make('player', 52, 52, (g) => {
+    g.fillStyle(COLORS.pink, 0.18);
+    g.fillCircle(26, 26, 25);
     g.fillStyle(COLORS.bgInt, 1);
-    g.fillRect(4, 6, 42, 42);
-    // Borde del neón puro
-    g.lineStyle(2, COLORS.neonPink, 1);
-    g.strokeRect(4, 6, 42, 42);
-    // Inner flashes
-    g.lineStyle(1, COLORS.neonYellow, 1);
-    g.strokeRect(8, 10, 34, 34);
-    g.fillStyle(COLORS.neonCyan, 0.85);
-    g.fillRect(6, 8, 38, 2);
-    g.fillRect(40, 8, 2, 30);
-    g.fillRect(4, 32, 40, 2);
-    g.fillRect(8, 6, 2, 32);
+    g.fillRect(5, 5, 42, 42);
+    g.lineStyle(2, COLORS.pink, 1);
+    g.strokeRect(5, 5, 42, 42);
+    g.lineStyle(1, COLORS.yellow, 1);
+    g.strokeRect(10, 10, 32, 32);
+    g.fillStyle(COLORS.cyan, 0.9);
+    g.fillRect(7, 7, 38, 2);
+    g.fillRect(43, 9, 2, 34);
   });
 
-  // Orbe: halo dorado + núcleo brillante.
-  make('orb', 36, 36, (g) => {
-    g.fillStyle(COLORS.neonYellow, 0.25);
-    g.fillCircle(18, 18, 17);
-    g.fillStyle(COLORS.neonYellow, 0.6);
-    g.fillCircle(18, 18, 11);
-    g.fillStyle(0xfff3c4, 1);
-    g.fillCircle(13, 13, 4);
-    g.fillStyle(0x000000, 1);
-    g.fillCircle(18, 18, 3);
+  make('orb', 38, 38, (g) => {
+    g.fillStyle(COLORS.yellow, 0.2);
+    g.fillCircle(19, 19, 18);
+    g.fillStyle(COLORS.yellow, 0.75);
+    g.fillCircle(19, 19, 11);
+    g.fillStyle(0xfff5c7, 1);
+    g.fillCircle(14, 14, 4);
+    g.fillStyle(COLORS.bgInt, 1);
+    g.fillCircle(19, 19, 3);
   });
 
-  // Peligro: rombo cian con brillo interior, warning glow externo.
-  make('hazard', 52, 52, (g) => {
-    g.fillStyle(COLORS.neonCyan, 0.2);
-    g.fillRect(0, 0, 52, 52);
-    g.lineStyle(2, COLORS.neonCyan, 0.6);
+  make('hazard', 54, 54, (g) => {
+    g.fillStyle(COLORS.cyan, 0.16);
+    g.fillCircle(27, 27, 25);
+    g.lineStyle(2, COLORS.cyan, 0.9);
     g.beginPath();
-    g.moveTo(20, 2);
-    g.lineTo(48, 20);
-    g.lineTo(46, 36);
-    g.lineTo(28, 46);
-    g.lineTo(6, 32);
-    g.lineTo(2, 12);
+    g.moveTo(27, 3); g.lineTo(50, 27); g.lineTo(27, 51); g.lineTo(4, 27);
+    g.closePath(); g.fillStyle(COLORS.cyan, 0.45); g.fillPath(); g.strokePath();
+    g.lineStyle(1, 0xffffff, 0.7);
+    g.strokeCircle(27, 27, 12);
+  });
+
+  make('shield', 42, 42, (g) => {
+    g.fillStyle(COLORS.good, 0.2);
+    g.fillCircle(21, 21, 20);
+    g.lineStyle(3, COLORS.good, 1);
+    g.strokeCircle(21, 21, 13);
+    g.lineBetween(21, 10, 21, 32);
+    g.lineBetween(10, 21, 32, 21);
+  });
+
+  make('predator', 46, 46, (g) => {
+    g.fillStyle(COLORS.pink, 0.22);
+    g.fillCircle(23, 23, 22);
+    g.fillStyle(COLORS.pink, 0.8);
+    g.fillCircle(23, 23, 14);
+    g.fillStyle(COLORS.bgInt, 1);
+    g.beginPath();
+    g.moveTo(14, 17); g.lineTo(23, 25); g.lineTo(32, 17);
+    g.lineTo(28, 31); g.lineTo(23, 27); g.lineTo(18, 31);
     g.closePath();
-    g.fillStyle(COLORS.neonCyan, 0.5);
     g.fillPath();
-    g.strokePath();
-    g.lineStyle(1, COLORS.neonCyan, 0.75);
-    g.beginPath();
-    g.moveTo(14, 8);
-    g.lineTo(36, 14);
-    g.lineTo(34, 26);
-    g.lineTo(22, 34);
-    g.lineTo(10, 26);
-    g.lineTo(8, 16);
-    g.closePath();
-    g.strokePath();
+    g.lineStyle(2, COLORS.yellow, 1);
+    g.strokeCircle(23, 23, 18);
   });
 
-  // Partícula base para los estallidos.
-  make('spark', 10, 10, (g) => {
+  make('spark', 8, 8, (g) => {
     g.fillStyle(0xffffff, 1);
-    g.fillCircle(5, 5, 5);
-    g.fillStyle(0xffffff, 0.5);
+    g.fillCircle(4, 4, 4);
+  });
+
+  make('star', 6, 6, (g) => {
+    g.fillStyle(0xffffff, 0.9);
     g.fillCircle(3, 3, 2);
   });
-
-  // Glow player y detalles de boost.
-  make('playerGlow', PLAYER_SIZE + 8, PLAYER_SIZE + 8, (g) => {
-    g.fillStyle(COLORS.neonPink, 0.6);
-    g.fillCircle(25, 25, 25);
-    g.fillStyle(COLORS.neonYellow, 0.7);
-    g.fillCircle(25, 25, 13);
-    g.fillStyle(COLORS.neonCyan, 0.5);
-    g.fillCircle(25, 25, 8);
-  });
-
-  // Pinchos estáticos para el escenario.
-  make('rock', 20, 20, (g) => {
-    g.fillStyle(COLORS.neonPurple, 0.75);
-    g.fillCircle(10, 10, 10);
-    g.lineStyle(1, COLORS.neonPurple, 1);
-    g.strokeCircle(10, 10, 10);
-    g.fillStyle(0xffe5ff, 0.6);
-    g.fillCircle(7, 7, 2);
-  });
-
-  // Estrellas de fondo.
-  make('star', 6, 6, (g) => {
-    g.fillStyle(0xffffff, 1);
-    g.fillCircle(3, 3, 3);
-    g.fillStyle(0xffffff, 0.3);
-    g.fillCircle(3, 3, 5);
-  });
 }
 
-function drawGrid(scene) {
-  const g = scene.add.graphics().setDepth(-10);
-
-  // Fondo degradado (reflejado en HUD para escena de resultado)
-  const grad = scene.add.graphics().setDepth(-20);
+function drawBackground(scene) {
+  const gradient = scene.add.graphics().setDepth(-20);
   for (let y = 0; y < GAME_HEIGHT; y += 4) {
     const t = y / GAME_HEIGHT;
-    const r = Math.floor(0.102 * (1 - t) + 0.043 * t);
-    const gv = Math.floor(0.118 * (1 - t) + 0.055 * t);
-    const b = Math.floor(0.196 * (1 - t) + 0.102 * t);
-    grad.fillStyle(Phaser.Display.Color.GetColor(r, gv, b), 1);
-    grad.fillRect(0, y, GAME_WIDTH, 4);
+    const color = Phaser.Display.Color.GetColor(
+      Math.floor(12 - t * 5),
+      Math.floor(20 - t * 8),
+      Math.floor(40 - t * 15)
+    );
+    gradient.fillStyle(color, 1).fillRect(0, y, GAME_WIDTH, 4);
   }
+  const grid = scene.add.graphics().setDepth(-10);
+  grid.lineStyle(1, COLORS.grid, 0.62);
+  for (let x = 0; x <= GAME_WIDTH; x += 40) grid.lineBetween(x, 0, x, GAME_HEIGHT);
+  for (let y = 0; y <= GAME_HEIGHT; y += 40) grid.lineBetween(0, y, GAME_WIDTH, y);
+  grid.lineStyle(1, COLORS.gridBright, 0.2);
+  for (let x = 20; x < GAME_WIDTH; x += 40) grid.lineBetween(x, 0, x, GAME_HEIGHT);
+  for (let y = 20; y < GAME_HEIGHT; y += 40) grid.lineBetween(0, y, GAME_WIDTH, y);
+  grid.lineStyle(3, COLORS.gridBright, 0.8);
+  grid.strokeRect(1, HUD_HEIGHT, GAME_WIDTH - 2, GAME_HEIGHT - HUD_HEIGHT - 2);
 
-  // Cuadrícula principal
-  g.lineStyle(1, COLORS.grid, 0.7);
-  for (let x = 0; x <= GAME_WIDTH; x += 40) g.lineBetween(x, 0, x, GAME_HEIGHT);
-  for (let y = 0; y <= GAME_HEIGHT; y += 40) g.lineBetween(0, y, GAME_WIDTH, y);
-
-  // Sub-grid sutil
-  g.lineStyle(1, COLORS.gridBright, 0.25);
-  for (let x = 0; x <= GAME_WIDTH; x += 20) g.lineBetween(x, 0, x, GAME_HEIGHT);
-  for (let y = 0; y <= GAME_HEIGHT; y += 20) g.lineBetween(0, y, GAME_WIDTH, y);
-
-  // Líneas de borde escenario (fondo escena)
-  g.lineStyle(3, COLORS.gridBright, 0.8);
-  g.lineBetween(0, 0, GAME_WIDTH, 0);
-  g.lineBetween(0, GAME_HEIGHT - 1, GAME_WIDTH, GAME_HEIGHT - 1);
-
-  return g;
+  const skyline = scene.add.graphics().setDepth(-8);
+  skyline.fillStyle(0x101a36, 0.9);
+  for (let x = 0; x < GAME_WIDTH; x += 38) {
+    const height = 35 + ((x * 17) % 95);
+    skyline.fillRect(x, GAME_HEIGHT - height, 32, height);
+    skyline.fillStyle(0x24446b, 0.7);
+    for (let y = GAME_HEIGHT - height + 12; y < GAME_HEIGHT - 5; y += 16) {
+      skyline.fillRect(x + 7, y, 4, 5);
+      skyline.fillRect(x + 19, y, 4, 5);
+    }
+    skyline.fillStyle(0x101a36, 0.9);
+  }
+  const sun = scene.add.circle(680, 155, 70, COLORS.purple, 0.09).setDepth(-9);
+  scene.tweens.add({ targets: sun, scale: 1.18, alpha: 0.04, duration: 2200, yoyo: true, repeat: -1 });
+  const horizon = scene.add.rectangle(400, GAME_HEIGHT - 82, GAME_WIDTH, 2, COLORS.pink, 0.7).setDepth(-7);
+  scene.tweens.add({ targets: horizon, alpha: 0.25, duration: 1100, yoyo: true, repeat: -1 });
 }
 
-/* ----------------------------------------------------------------- menú */
+function addStars(scene) {
+  const stars = scene.add.particles(0, 0, 'star', {
+    x: { min: 0, max: GAME_WIDTH },
+    y: { min: HUD_HEIGHT, max: GAME_HEIGHT },
+    speedX: { min: -5, max: 5 },
+    speedY: { min: -8, max: -2 },
+    lifespan: { min: 3500, max: 7000 },
+    scale: { start: 0.8, end: 0 },
+    alpha: { start: 0.8, end: 0 },
+    frequency: 180,
+    quantity: 1,
+    tint: [0xffffff, COLORS.cyan, COLORS.purple]
+  }).setDepth(-5);
+  stars.start();
+  return stars;
+}
+
 class MenuScene extends Phaser.Scene {
-  constructor() {
-    super('Menu');
-  }
+  constructor() { super('Menu'); }
 
   create() {
     ensureTextures(this);
-    this.cameras.main.setBackgroundColor(COLORS.bg);
-    this.cameras.main.fadeIn(300, 16, 20, 35);
-    drawGrid(this);
+    drawBackground(this);
+    addStars(this);
+    this.cameras.main.fadeIn(300, 9, 13, 26);
 
     if (!this.registry.has('best')) this.registry.set('best', 0);
+    if (!this.registry.has('credits')) this.registry.set('credits', 0);
+    if (!this.registry.has('upgrades')) this.registry.set('upgrades', { speed: 0, magnet: 0, armor: 0 });
+    Sfx.startMusic();
+    const title = this.add.text(400, 105, 'NEON DRIFT', {
+      fontFamily: FONT, fontSize: '68px', color: COLORS.accent, fontStyle: 'bold'
+    }).setOrigin(0.5);
+    title.setShadow(0, 0, COLORS.accent, 20, true, true);
+    this.add.text(400, 166, 'LA ÚLTIMA LUZ DE NEON-7', {
+      fontFamily: FONT, fontSize: '18px', color: '#4cc9f0'
+    }).setOrigin(0.5);
 
-    const title = this.add
-      .text(GAME_WIDTH / 2, 150, 'NEON DRIFT', {
-        fontFamily: FONT,
-        fontSize: '72px',
-        color: COLORS.accent,
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5);
-    title.setShadow(0, 0, COLORS.accent, 24, true, true);
-
-    this.add
-      .text(GAME_WIDTH / 2, 212, 'RECOGE LOS ORBES · ESQUIVA LOS ROMBOS', {
-        fontFamily: FONT,
-        fontSize: '17px',
-        color: COLORS.text
-      })
-      .setOrigin(0.5);
-
-    // Escena decorativa: jugador flotando entre orbes y un rombo.
-    const demo = this.add.rectangle(GAME_WIDTH / 2, 315, PLAYER_SIZE, PLAYER_SIZE, PLAYER_COLOR);
-    this.tweens.add({
-      targets: demo,
-      y: '+=12',
-      duration: 900,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-
-    const orbLeft = this.add.image(300, 315, 'orb');
-    const orbRight = this.add.image(500, 315, 'orb');
-    this.tweens.add({
-      targets: [orbLeft, orbRight],
-      angle: 360,
-      duration: 6000,
-      repeat: -1
-    });
-    this.tweens.add({
-      targets: [orbLeft, orbRight],
-      y: '-=12',
-      duration: 900,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-
-    const hazard = this.add.image(700, 315, 'hazard');
-    this.tweens.add({
-      targets: hazard,
-      angle: 360,
-      duration: 3000,
-      repeat: -1
-    });
-
-    // Lore de Neon Drift - Historia del juego
-    const loreLines = [
-      'EN EL AÑO 2142, EN LA CIUDAD NEON-7...',
-      'UN CONDUCTOR VALIENTE LUCHA POR SOBREVIVIR',
-      'RECOGIENDÓN ENERGÍA OSCURES Y EVITANDO PELIGROS',
-      'CUYO OBJETIVO ES ALCANZAR LA LUZ AL FINAL DE CADA RONDA'
+    const lore = [
+      'AÑO 2142. La ciudad consume energía más rápido de lo que puede producirla.',
+      'Tú eres el último piloto de la red DRIFT: recoge núcleos de luz,',
+      'sobrevive a los drones de seguridad y reactiva el corazón de la ciudad.',
+      '',
+      'Cada núcleo aumenta tu combo. Cada oleada acelera a los drones.',
+      'El escudo aparece cuando más lo necesitas. No dejes que la red muera.'
     ];
-    loreLines.forEach((line, index) => {
-      const style = { fontFamily: FONT, fontSize: index === 0 ? '24px' : '16px', color: index === 0 ? COLORS.accent : COLORS.dim };
-      this.add
-        .text(GAME_WIDTH / 2, 180 + index * 24, line, style)
-        .setOrigin(0.5);
-    });
+    lore.forEach((line, index) => this.add.text(400, 225 + index * 22, line, {
+      fontFamily: FONT, fontSize: index === 0 ? '15px' : '14px',
+      color: index === 0 ? COLORS.text : COLORS.dim, align: 'center'
+    }).setOrigin(0.5));
 
-    // Instrucciones de control
-    const controlsLines = [
-      'FLECHAS / WASD: MOVERSE',
-      'ESPACIO: REFORZAR MOTORES (BONUS)',
-      'P: PAUSA / REANUDAR'
-    ];
-    controlsLines.forEach((line, index) => {
-      this.add
-        .text(GAME_WIDTH / 2, 360 + index * 22, line, {
-          fontFamily: FONT,
-          fontSize: '16px',
-          color: COLORS.text
-        })
-        .setOrigin(0.5);
+    const demo = this.add.image(400, 400, 'player');
+    this.tweens.add({ targets: demo, y: '+=10', duration: 900, yoyo: true, repeat: -1 });
+    [300, 500].forEach((x) => {
+      const orb = this.add.image(x, 400, 'orb');
+      this.tweens.add({ targets: orb, angle: 360, duration: 3500, repeat: -1 });
     });
-
-    const lines = [
-      'FLECHAS  ← ↑ ↓ →   para moverte',
-      '3 vidas · 60 segundos · P para pausa',
-      'Cada 3 orbes aparece un rombo nuevo'
-    ];
-    lines.forEach((line, index) => {
-      this.add
-        .text(GAME_WIDTH / 2, 400 + index * 28, line, {
-          fontFamily: FONT,
-          fontSize: '16px',
-          color: index === 0 ? COLORS.text : COLORS.dim
-        })
-        .setOrigin(0.5);
-    });
-
-    const prompt = this.add
-      .text(GAME_WIDTH / 2, 510, 'PULSA ESPACIO PARA EMPEZAR', {
-        fontFamily: FONT,
-        fontSize: '22px',
-        color: COLORS.good,
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5);
-    this.tweens.add({
-      targets: prompt,
-      alpha: 0.25,
-      duration: 700,
-      yoyo: true,
-      repeat: -1
-    });
-
-    this.add
-      .text(GAME_WIDTH / 2, 562, `RÉCORD ${this.registry.get('best')}`, {
-        fontFamily: FONT,
-        fontSize: '15px',
-        color: COLORS.dim
-      })
-      .setOrigin(0.5);
+    const prompt = this.add.text(400, 500, 'PULSA ESPACIO O TOCA PARA INICIAR', {
+      fontFamily: FONT, fontSize: '20px', color: COLORS.good, fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: prompt, alpha: 0.3, duration: 700, yoyo: true, repeat: -1 });
+    this.add.text(400, 548, `CRÉDITOS ${this.registry.get('credits')}  ·  T: TIENDA  ·  M: MÚSICA  ·  FLECHAS/WASD MOVER`, {
+      fontFamily: FONT, fontSize: '12px', color: COLORS.dim
+    }).setOrigin(0.5);
 
     const start = () => {
       Sfx.init();
-      Sfx.blip(660, 0.1, 'triangle', 0.05);
+      Sfx.blip(660);
       this.scene.start('Game');
     };
-
     this.input.keyboard.once('keydown-SPACE', start);
     this.input.keyboard.once('keydown-ENTER', start);
+    this.input.keyboard.once('keydown-T', () => this.scene.start('Shop', { returnTo: 'Menu' }));
+    this.input.keyboard.once('keydown-M', () => {
+      Sfx.toggleMusic();
+    });
     this.input.once('pointerdown', start);
   }
 }
 
-/* ----------------------------------------------------------------- juego */
 class GameScene extends Phaser.Scene {
-  constructor() {
-    super('Game');
-  }
+  constructor() { super('Game'); }
 
   create() {
     ensureTextures(this);
-    this.cameras.main.setBackgroundColor(COLORS.bg);
-    this.cameras.main.fadeIn(250, 16, 20, 35);
-    drawGrid(this);
+    drawBackground(this);
+    this.bgStars = addStars(this);
+    this.cameras.main.fadeIn(250, 9, 13, 26);
+    this.physics.world.setBounds(0, HUD_HEIGHT, GAME_WIDTH, GAME_HEIGHT - HUD_HEIGHT);
 
     this.score = 0;
+    this.creditsEarned = 0;
     this.lives = START_LIVES;
     this.collected = 0;
     this.timeLeft = ROUND_TIME;
+    this.combo = 0;
+    this.wave = 1;
+    this.invulnerable = false;
+    this.predatorTime = 0;
     this.isOver = false;
     this.isPaused = false;
-    this.invulnerable = false;
-    this.pauseTtl = 0;
-    this.pauseTtlTimer = null;
+    this.dashCooldown = 0;
+    this.lastOrbAt = this.time.now;
+    this.upgrades = this.registry.get('upgrades') || { speed: 0, magnet: 0, armor: 0 };
+    this.playerSpeed = PLAYER_SPEED + this.upgrades.speed * 22;
+    this.lives += this.upgrades.armor;
+    Sfx.startMusic();
 
-    this.physics.world.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT);
-
-    // Haz stars flotando en el bg (permanent particles).
-    if (scene) {
-      this.bgStars = scene.add.particles(0, 0, 'star', {
-        x: { min: 0, max: GAME_WIDTH },
-        y: { min: 0, max: GAME_HEIGHT },
-        speedX: { min: -4, max: 4 },
-        speedY: { min: -4, max: -1 },
-        gravityY: -6,
-        lifespan: { min: 3000, max: 7000 },
-        scale: { start: 0.5, end: 0 },
-        alpha: { start: 1, end: 0 },
-        frequency: 220,
-        tint: [0xffffff, COLORS.neonCyan],
-        quantity: 1
-      }).setDepth(-5);
-      this.bgStars.start();
-    } else {
-      this.bgStars = null;
-    }
-
-    this.bgPulse = scene.add.particles(0, 0, 'star', {
-      x: { min: 0, max: GAME_WIDTH },
-      y: { min: 0, max: GAME_HEIGHT },
-      speedX: 0,
-      speedY: 0,
-      lifespan: 4000,
-      scale: { start: 0.4, end: 0 },
-      alpha: { start: 0.9, end: 0 },
-      frequency: 2400,
-      tint: COLORS.neonPurple,
-      quantity: 1
-    }).setDepth(-3);
-    this.bgPulse.start();
-
-    /* Jugador ---------------------------------------------------------- */
-    this.player = this.physics.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'player');
-    this.player.setDepth(10);
-    this.player.setCollideWorldBounds(true);
-    this.player.setBounce(0);
-    this.player.setDrag(PLAYER_DRAG, PLAYER_DRAG);
-
-    /* Partículas ------------------------------------------------------- */
-    this.trail = this.add
-      .particles(0, 0, 'spark', {
-        speed: { min: 6, max: 14 },
-        lifespan: { min: 180, max: 420 },
-        scale: { start: 0.5, end: 0 },
-        alpha: { start: 0.9, end: 0 },
-        tint: [COLORS.neonPink, COLORS.neonYellow, COLORS.neonCyan],
-        frequency: 32,
-        quantity: 2
-      })
-      .setDepth(4);
-    this.trail.startFollow(this.player);
-
-    this.orbBurst = this.add
-      .particles(0, 0, 'spark', {
-        speed: { min: 60, max: 260 },
-        lifespan: { min: 280, max: 640 },
-        scale: { start: 1.3, end: 0 },
-        tint: [COLORS.neonYellow, 0xfff3c4, COLORS.neonPink, COLORS.neonCyan],
-        emitting: false
-      })
-      .setDepth(9);
-
-    this.hitBurst = this.add
-      .particles(0, 0, 'spark', {
-        speed: { min: 80, max: 280 },
-        lifespan: { min: 280, max: 680 },
-        scale: { start: 1.4, end: 0 },
-        tint: [COLORS.neonCyan, 0xffffff, COLORS.neonPink],
-        emitting: false
-      })
-      .setDepth(9);
-
-    /* Grupos ----------------------------------------------------------- */
+    this.player = this.physics.add.image(400, 350, 'player')
+      .setDepth(10).setCollideWorldBounds(true).setDrag(1200, 1200);
+    this.player.body.setCircle(16, 10, 10);
     this.orbs = this.physics.add.group({ allowGravity: false, immovable: true });
-    this.hazards = this.physics.add.group({
-      allowGravity: false,
-      bounce: 1,
-      collideWorldBounds: true
-    });
-    this.rocks = this.physics.add.staticGroup();
-
+    this.hazards = this.physics.add.group({ allowGravity: false, bounce: 1, collideWorldBounds: true });
+    this.pickups = this.physics.add.group({ allowGravity: false, immovable: true });
     this.physics.add.overlap(this.player, this.orbs, this.collectOrb, null, this);
-    this.physics.add.overlap(this.player, this.hazards, this.takeHit, null, this);
+    this.physics.add.overlap(this.player, this.pickups, this.collectPickup, null, this);
+    this.physics.add.overlap(this.player, this.hazards, this.handleHazardContact, null, this);
 
-    /* HUD -------------------------------------------------------------- */
+    this.trail = this.add.particles(0, 0, 'spark', {
+      speed: { min: 8, max: 18 }, lifespan: 350, scale: { start: 0.7, end: 0 },
+      alpha: { start: 0.8, end: 0 }, tint: [COLORS.pink, COLORS.yellow, COLORS.cyan],
+      frequency: 35, quantity: 2
+    }).setDepth(4);
+    this.trail.startFollow(this.player);
+    this.burst = this.add.particles(0, 0, 'spark', {
+      speed: { min: 70, max: 260 }, lifespan: { min: 250, max: 650 },
+      scale: { start: 1.2, end: 0 }, tint: [COLORS.yellow, COLORS.pink, COLORS.cyan], emitting: false
+    }).setDepth(12);
+
     this.createHUD();
-
-    /* Entidades iniciales ---------------------------------------------- */
-    for (let i = 0; i < ORB_COUNT; i += 1) this.spawnOrb();
-    for (let i = 0; i < 2; i += 1) this.spawnHazard();
-    for (let i = 0; i < 6; i += 1) this.rocks.create(Phaser.Math.Between(40, GAME_WIDTH - 40), GAME_HEIGHT, 'rock').setDepth(3);
-
-    /* Entrada ---------------------------------------------------------- */
     this.cursors = this.input.keyboard.createCursorKeys();
-    // Teclas WASD
     this.keys = {
       w: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
       a: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
@@ -517,510 +343,383 @@ class GameScene extends Phaser.Scene {
       d: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
     };
     this.input.keyboard.on('keydown-P', this.togglePause, this);
-
-    // Nueva entrada: boost espacial (barra espaciadora)
-    this.input.keyboard.on('keydown-SPACE', this.activateBoost, this);
-
-    /* Reloj ------------------------------------------------------------ */
-
-    /* Reloj ------------------------------------------------------------ */
-    this.timerEvent = this.time.addEvent({
-      delay: 1000,
-      loop: true,
-      callback: this.tickClock,
-      callbackScope: this
-    });
-
-    /* TTL: en pausa, libera recursos si se deja demasiado tiempo.
-     * Evita que el juego acumule memoria y se vuelva lento.
-     */
-    this.pauseTtl = 0;
-    this.pauseTtlTimer = this.time.addEvent({
-      delay: 1000,
-      loop: true,
-      callback: () => {
-        if (this.isPaused) {
-          this.pauseTtl += 1000;
-          if (this.pauseTtl >= 60000) this.cleanupPauseMemory();
-        } else {
-          this.pauseTtl = 0;
-        }
-      },
-      callbackScope: this
-    });
+    this.input.keyboard.on('keydown-SPACE', this.dash, this);
+    for (let index = 0; index < ORB_COUNT + this.upgrades.magnet; index += 1) this.spawnOrb();
+    for (let index = 0; index < 5; index += 1) this.spawnHazard(index * 3);
+    this.timerEvent = this.time.addEvent({ delay: 1000, loop: true, callback: this.tickClock, callbackScope: this });
+    this.hazardEvent = this.time.addEvent({ delay: 4200, loop: true, callback: this.progressDifficulty, callbackScope: this });
+    this.pickupEvent = this.time.addEvent({ delay: 11000, loop: true, callback: this.spawnPredator, callbackScope: this });
   }
 
   createHUD() {
-    const style = { fontFamily: FONT, fontSize: '20px', color: COLORS.text };
+    this.add.rectangle(0, 0, GAME_WIDTH, HUD_HEIGHT, 0x070b16, 0.92).setOrigin(0).setDepth(19);
+    this.add.text(22, 14, 'PUNTOS', { fontFamily: FONT, fontSize: '13px', color: COLORS.dim }).setDepth(20);
+    this.scoreText = this.add.text(22, 31, '0', { fontFamily: FONT, fontSize: '22px', color: COLORS.text }).setDepth(20);
+    this.livesText = this.add.text(165, 20, `VIDAS ${this.lives}`, { fontFamily: FONT, fontSize: '16px', color: COLORS.text }).setDepth(20);
+    this.waveText = this.add.text(310, 20, 'OLEADA 1', { fontFamily: FONT, fontSize: '16px', color: '#4cc9f0' }).setDepth(20);
+    this.comboText = this.add.text(470, 20, 'COMBO x0', { fontFamily: FONT, fontSize: '16px', color: '#ffd166' }).setDepth(20);
+    this.timeText = this.add.text(778, 20, `TIEMPO ${this.timeLeft}`, { fontFamily: FONT, fontSize: '16px', color: COLORS.text }).setOrigin(1, 0).setDepth(20);
+    this.dashText = this.add.text(778, 51, 'DASH LISTO [ESPACIO]', { fontFamily: FONT, fontSize: '11px', color: COLORS.good }).setOrigin(1, 0).setDepth(20);
+    this.powerText = this.add.text(22, 65, 'DEPREDADOR: --', { fontFamily: FONT, fontSize: '11px', color: COLORS.dim }).setDepth(20);
 
-    this.add.rectangle(0, 0, GAME_WIDTH, 84, 0x0b0e18, 0.55).setOrigin(0).setDepth(19);
-
-    const divider = this.add.graphics().setDepth(19);
-    divider.lineStyle(1, COLORS.grid, 1);
-    divider.lineBetween(0, 84, GAME_WIDTH, 84);
-
-    this.scoreText = this.add
-      .text(24, 20, 'PUNTOS 0', style)
-      .setDepth(20);
-
-    this.livesText = this.add
-      .text(24, 48, `VIDAS ${START_LIVES}`, {
-        fontFamily: FONT,
-        fontSize: '16px',
-        color: COLORS.dim
-      })
-      .setDepth(20);
-
-    this.timeText = this.add
-      .text(GAME_WIDTH - 24, 20, `TIEMPO ${ROUND_TIME}`, style)
-      .setOrigin(1, 0)
-      .setDepth(20);
-
-    const pauseBg = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.72).setOrigin(0);
-    const pauseTitle = this.add
-      .text(GAME_WIDTH / 2, 280, 'PAUSA', {
-        fontFamily: FONT,
-        fontSize: '56px',
-        color: COLORS.accent,
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5);
-    pauseTitle.setShadow(0, 0, COLORS.accent, 18, true, true);
-    const pauseHint = this.add
-      .text(GAME_WIDTH / 2, 336, 'Pulsa P para continuar', {
-        fontFamily: FONT,
-        fontSize: '18px',
-        color: COLORS.text
-      })
-      .setOrigin(0.5);
-
-    this.pauseLayer = this.add
-      .container(0, 0, [pauseBg, pauseTitle, pauseHint])
-      .setDepth(30)
-      .setVisible(false);
-
-    /* TTL: en pausa, libera recursos si se deja demasiado tiempo.
-     * Evita que el juego acumule memoria y se vuelva lento.
-     */
-    this.pauseTtl = 0;
-    this.pauseTtlTimer = this.time.addEvent({
-      delay: 1000,
-      loop: true,
-      callback: () => {
-        if (this.isPaused) {
-          this.pauseTtl += 1000;
-          if (this.pauseTtl >= 60000) this.cleanupPauseMemory();
-        } else {
-          this.pauseTtl = 0;
-        }
-      },
-      callbackScope: this
-    });
+    const overlay = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.78).setOrigin(0);
+    const title = this.add.text(400, 275, 'PAUSA', { fontFamily: FONT, fontSize: '56px', color: COLORS.accent, fontStyle: 'bold' }).setOrigin(0.5);
+    const hint = this.add.text(400, 335, 'P para continuar · recoge núcleos para mantener el combo', { fontFamily: FONT, fontSize: '15px', color: COLORS.text }).setOrigin(0.5);
+    this.pauseLayer = this.add.container(0, 0, [overlay, title, hint]).setDepth(30).setVisible(false);
   }
 
   spawnOrb() {
-    let x = GAME_WIDTH / 2;
-    let y = GAME_HEIGHT / 2;
-
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      x = Phaser.Math.Between(50, GAME_WIDTH - 50);
-      y = Phaser.Math.Between(130, GAME_HEIGHT - 50);
-      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) > 180) break;
+    let x = 0;
+    let y = 0;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      x = Phaser.Math.Between(45, 755);
+      y = Phaser.Math.Between(HUD_HEIGHT + 35, 560);
+      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) > 140) break;
     }
-
-    const orb = this.orbs.create(x, y, 'orb');
-    orb.setDepth(5);
-    orb.body.setAllowGravity(false);
-    orb.body.setImmovable(true);
-    orb.body.setCircle(12, 2, 2);
-
-    this.tweens.add({
-      targets: orb,
-      scale: { from: 0.8, to: 1.2 },
-      duration: 700,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-    this.tweens.add({
-      targets: orb,
-      angle: 360,
-      duration: 5200,
-      repeat: -1
-    });
+    const orb = this.orbs.create(x, y, 'orb').setDepth(5);
+    orb.body.setCircle(12, 7, 7);
+    this.tweens.add({ targets: orb, scale: { from: 0.75, to: 1.15 }, duration: 650, yoyo: true, repeat: -1 });
+    this.tweens.add({ targets: orb, angle: 360, duration: 4200, repeat: -1 });
   }
 
-  spawnHazard() {
+  spawnHazard(extraSpeed = 0) {
     if (this.hazards.countActive(true) >= MAX_HAZARDS) return;
-
-    const margin = 36;
     const edge = Phaser.Math.Between(0, 3);
-    let x;
-    let y;
-
-    if (edge === 0) {
-      x = Phaser.Math.Between(margin, GAME_WIDTH - margin);
-      y = margin;
-    } else if (edge === 1) {
-      x = GAME_WIDTH - margin;
-      y = Phaser.Math.Between(margin, GAME_HEIGHT - margin);
-    } else if (edge === 2) {
-      x = Phaser.Math.Between(margin, GAME_WIDTH - margin);
-      y = GAME_HEIGHT - margin;
-    } else {
-      x = margin;
-      y = Phaser.Math.Between(margin, GAME_HEIGHT - margin);
-    }
-
-    // Si el borde superior envía el hazard, asegúrate de que no quede fuera del HUD (evita la línea del HUD)
-    if (edge === 0 && y < 90) y = 90;
-
-    const hazard = this.hazards.create(x, y, 'hazard');
-    hazard.setDepth(6);
-    hazard.body.setAllowGravity(false);
-    hazard.body.setCircle(14, 2, 2);
-    hazard.setCollideWorldBounds(true);
-    hazard.setBounce(0.9);
-
-    const targetX = Phaser.Math.Between(150, GAME_WIDTH - 150);
-    const targetY = Phaser.Math.Between(180, GAME_HEIGHT - 150);
-    const angle = Phaser.Math.Angle.Between(x, y, targetX, targetY);
-    const speed = Math.min(170, 80 + this.collected * 7);
-
+    const margin = 35;
+    let x = edge % 2 === 0 ? Phaser.Math.Between(margin, 765) : edge === 1 ? 765 : margin;
+    let y = edge % 2 === 1 ? Phaser.Math.Between(HUD_HEIGHT + margin, 565) : edge === 0 ? HUD_HEIGHT + margin : 565;
+    const hazard = this.hazards.create(x, y, 'hazard').setDepth(6);
+    hazard.body.setCircle(17, 10, 10);
+    const angle = Phaser.Math.Angle.Between(x, y, this.player.x, this.player.y);
+    const speed = 80 + this.wave * 14 + extraSpeed;
     this.physics.velocityFromRotation(angle, speed, hazard.body.velocity);
+    this.tweens.add({ targets: hazard, angle: 360, duration: 2200, repeat: -1 });
+  }
 
-    this.tweens.add({
-      targets: hazard,
-      angle: 360,
-      duration: Phaser.Math.Between(2400, 4200),
-      repeat: -1
-    });
+  spawnShield() {
+    if (this.pickups.countActive(true) > 0) return;
+    const pickup = this.pickups.create(Phaser.Math.Between(65, 735), Phaser.Math.Between(145, 545), 'shield').setDepth(5);
+    pickup.body.setCircle(12, 9, 9);
+    this.tweens.add({ targets: pickup, angle: 360, duration: 1800, repeat: -1 });
+    this.tweens.add({ targets: pickup, scale: { from: 0.7, to: 1.1 }, duration: 500, yoyo: true, repeat: -1 });
+  }
+
+  spawnPredator() {
+    if (this.isOver || this.pickups.countActive(true) > 0) return;
+    const pickup = this.pickups.create(Phaser.Math.Between(65, 735), Phaser.Math.Between(145, 545), 'predator')
+      .setDepth(7);
+    pickup.setData('type', 'predator');
+    pickup.body.setCircle(14, 9, 9);
+    this.tweens.add({ targets: pickup, angle: -360, duration: 1300, repeat: -1 });
+    this.tweens.add({ targets: pickup, scale: { from: 0.75, to: 1.15 }, duration: 420, yoyo: true, repeat: -1 });
+    Sfx.blip(420, 0.14, 'square', 0.04);
   }
 
   updateHUD() {
-    this.scoreText.setText(`PUNTOS ${this.score}`);
+    this.scoreText.setText(String(this.score));
     this.livesText.setText(`VIDAS ${this.lives}`);
-    this.livesText.setColor(this.lives <= 1 ? COLORS.accent : COLORS.dim);
-  }
-
-  tickClock() {
-    if (this.isOver) return;
-
-    this.timeLeft -= 1;
+    this.livesText.setColor(this.lives === 1 ? COLORS.accent : COLORS.text);
+    this.waveText.setText(`OLEADA ${this.wave}`);
+    this.comboText.setText(`COMBO x${this.combo}`);
     this.timeText.setText(`TIEMPO ${this.timeLeft}`);
-    if (this.timeLeft <= 10) {
-      this.timeText.setColor(COLORS.warn);
-      if (this.timeLeft <= 5) Sfx.blip(920, 0.09, 'square', 0.07);
-    }
-
-    if (this.timeLeft <= 0) this.endGame(true);
+    this.dashText.setText(this.dashCooldown <= 0 ? 'DASH LISTO [ESPACIO]' : `DASH ${this.dashCooldown.toFixed(1)}s`);
+    this.dashText.setColor(this.dashCooldown <= 0 ? COLORS.good : COLORS.dim);
+    this.powerText.setText(this.predatorTime > 0 ? `DEPREDADOR: ${this.predatorTime.toFixed(1)}s` : 'DEPREDADOR: --');
+    this.powerText.setColor(this.predatorTime > 0 ? COLORS.accent : COLORS.dim);
   }
 
   collectOrb(player, orb) {
     if (this.isOver) return;
-
-    const { x, y } = orb;
     this.tweens.killTweensOf(orb);
+    const { x, y } = orb;
     orb.destroy();
-
-    this.score += 10;
     this.collected += 1;
-
-    this.orbBurst.explode(18, x, y);
-    this.cameras.main.shake(60, 0.003);
-    Sfx.blip(820 + Math.min(this.collected, 12) * 40, 0.09, 'triangle', 0.06);
-
-    // Destello extra en el orbe al recogerlo.
-    this.tweens.add({
-      targets: this.player,
-      scale: { from: 1.15, to: 1 },
-      duration: 100,
-      ease: 'Back.easeOut',
-      onComplete: () => {}
-    });
-
-    this.updateHUD();
+    this.combo = this.time.now - this.lastOrbAt < 5000 ? Math.min(this.combo + 1, 9) : 1;
+    this.lastOrbAt = this.time.now;
+    this.score += 10 + this.combo * 2;
+    this.creditsEarned += 1;
+    this.burst.explode(18, x, y);
+    Sfx.blip(700 + this.combo * 45, 0.08);
     this.spawnOrb();
-    if (this.collected % 3 === 0) this.spawnHazard();
+    if (this.collected % 8 === 0) this.spawnShield();
+    this.updateHUD();
+  }
+
+  collectPickup(player, pickup) {
+    if (pickup.getData('type') === 'predator') {
+      pickup.destroy();
+      this.predatorTime = 7;
+      this.invulnerable = true;
+      this.player.setTint(COLORS.pink);
+      this.burst.explode(30, player.x, player.y);
+      Sfx.blip(440, 0.3, 'square', 0.08);
+      return;
+    }
+    this.collectShield(player, pickup);
+  }
+
+  collectShield(player, pickup) {
+    pickup.destroy();
+    this.invulnerable = true;
+    this.player.setTint(COLORS.good);
+    this.burst.explode(24, player.x, player.y);
+    this.time.delayedCall(5000, () => {
+      this.invulnerable = false;
+      if (this.player) this.player.clearTint();
+    });
+    Sfx.blip(980, 0.2, 'sine', 0.07);
+  }
+
+  handleHazardContact(player, hazard) {
+    if (this.predatorTime > 0) {
+      const { x, y } = hazard;
+      hazard.destroy();
+      this.score += 25 + this.wave * 3;
+      this.creditsEarned += 3;
+      this.burst.explode(20, x, y);
+      Sfx.blip(980, 0.08, 'square', 0.05);
+      this.updateHUD();
+      return;
+    }
+    this.takeHit(player, hazard);
   }
 
   takeHit(player, hazard) {
     if (this.isOver || this.invulnerable) return;
-
     this.lives -= 1;
-    this.hitBurst.explode(22, player.x, player.y);
-    this.cameras.main.shake(280, 0.011);
-    Sfx.blip(180, 0.3, 'sawtooth', 0.09);
-    this.updateHUD();
-
-    if (this.lives <= 0) {
-      this.endGame(false);
-      return;
-    }
-
+    this.combo = 0;
     this.invulnerable = true;
-    this.player.setAlpha(0.4);
-    this.time.addEvent({
-      delay: 110,
-      repeat: 9,
-      callback: () => {
-        if (this.player) this.player.setAlpha(this.player.alpha < 1 ? 1 : 0.4);
-      }
-    });
-    this.time.delayedCall(1200, () => {
+    this.burst.explode(26, this.player.x, this.player.y);
+    this.cameras.main.shake(220, 0.01);
+    Sfx.blip(160, 0.25, 'sawtooth', 0.08);
+    this.player.setAlpha(0.35);
+    if (hazard && hazard.body) {
+      const angle = Phaser.Math.Angle.Between(player.x, player.y, hazard.x, hazard.y);
+      this.physics.velocityFromRotation(angle, 300, hazard.body.velocity);
+    }
+    this.time.delayedCall(1300, () => {
       this.invulnerable = false;
       if (this.player) this.player.setAlpha(1);
     });
+    this.updateHUD();
+    if (this.lives <= 0) this.endGame(false);
+  }
+
+  progressDifficulty() {
+    if (this.isOver) return;
+    this.wave += 1;
+    const amount = Math.min(3, 1 + Math.floor(this.wave / 3));
+    for (let index = 0; index < amount; index += 1) this.spawnHazard(this.wave * 3);
+    if (this.wave % 3 === 0) this.spawnShield();
+    this.updateHUD();
+  }
+
+  tickClock() {
+    if (this.isOver || this.isPaused) return;
+    this.timeLeft -= 1;
+    if (this.time.now - this.lastOrbAt > 5000) this.combo = 0;
+    if (this.timeLeft <= 10) this.timeText.setColor(COLORS.warn);
+    this.updateHUD();
+    if (this.timeLeft <= 0) this.endGame(true);
+  }
+
+  dash() {
+    if (this.isOver || this.isPaused || this.dashCooldown > 0) return;
+    const direction = new Phaser.Math.Vector2(
+      (this.cursors.right.isDown || this.keys.d.isDown ? 1 : 0) - (this.cursors.left.isDown || this.keys.a.isDown ? 1 : 0),
+      (this.cursors.down.isDown || this.keys.s.isDown ? 1 : 0) - (this.cursors.up.isDown || this.keys.w.isDown ? 1 : 0)
+    );
+    if (direction.length() === 0) direction.set(1, 0);
+    direction.normalize();
+    this.player.setVelocity(direction.x * 700, direction.y * 700);
+    this.burst.explode(15, this.player.x, this.player.y);
+    this.dashCooldown = 3;
+    Sfx.blip(1200, 0.12, 'sine', 0.07);
   }
 
   togglePause() {
     if (this.isOver) return;
-
     this.isPaused = !this.isPaused;
     this.pauseLayer.setVisible(this.isPaused);
-  }
-
-  // Nuevo: Activa un boost temporal al presionar ESPACIO
-  activateBoost() {
-    if (this.isOver || this.isPaused || !this.player) return;
-
-    // Efecto visual de boost
-    const boostTint = [COLORS.neonCyan, COLORS.neonYellow, COLORS.neonPink];
-    this.player.setTint(boostTint[0]);
-    this.time.addEvent({
-      delay: 90,
-      repeat: 5,
-      callback: () => {
-        if (this.player)
-          this.player.setTint(boostTint[Math.floor(Math.random() * boostTint.length)]);
-      }
-    });
-    this.time.delayedCall(650, () => {
-      if (this.player) this.player.setTint(PLAYER_COLOR);
-    });
-
-    // Efecto particle boost extra
-    this.orbBurst.explode(12, this.player.x, this.player.y);
-
-    // Aumentar velocidad temporalmente
-    const boostFactor = 1.6;
-    this.player.setVelocity(
-      (this.player.body.velocity.x || 0) * boostFactor,
-      (this.player.body.velocity.y || 0) * boostFactor
-    );
-    this.time.delayedCall(750, () => {
-      if (this.player)
-        this.player.setVelocity(
-          (this.player.body.velocity.x / boostFactor) || 0,
-          (this.player.body.velocity.y / boostFactor) || 0
-        );
-    });
-    Sfx.blip(1200, 0.12, 'sine', 0.07);
-  }
-
-  cleanupPauseMemory() {
-    this.pauseTtl = 0;
-    if (this.pauseTtlTimer) {
-      this.pauseTtlTimer.remove();
-      this.pauseTtlTimer = null;
-    }
-    this.physics.pause();
-    this.tweens.pauseAll();
-    this.tweens.getAllTweens().forEach((t) => {
-      if (t.isPlaying()) t.stop();
-      if (t.isPaused()) t.resume();
-    });
-    if (this.trail) this.trail.stop();
-    if (this.orbBurst) this.orbBurst.stop();
-    if (this.hitBurst) this.hitBurst.stop();
-    if (this.bgStars) this.bgStars.stop();
-    if (this.bgPulse) this.bgPulse.stop();
-    if (this.orbBurst) this.orbBurst = null;
-    if (this.hitBurst) this.hitBurst = null;
-    if (this.timerEvent) this.timerEvent.remove();
-    if (this.pauseTtlTimer) {
-      this.pauseTtlTimer.remove();
-      this.pauseTtlTimer = null;
-    }
-  }
-
-  cleanupRocks() {
-    this.rocks.destroyAll();
+    if (this.isPaused) this.physics.pause();
+    else this.physics.resume();
   }
 
   endGame(won) {
     if (this.isOver) return;
-
     this.isOver = true;
-    this.player.setVelocity(0, 0);
     this.physics.pause();
+    this.timerEvent.remove();
+    this.hazardEvent.remove();
+    this.pickupEvent.remove();
     this.trail.stop();
-    if (this.bgStars) this.bgStars.stop();
-    if (this.bgPulse) this.bgPulse.stop();
-    if (this.timerEvent) this.timerEvent.remove();
-
-    Sfx.blip(won ? 880 : 180, 0.25, won ? 'sine' : 'sawtooth', 0.06);
-
-    const best = Math.max(this.score, this.registry.get('best') || 0);
+    const previousBest = this.registry.get('best') || 0;
+    const isRecord = this.score > previousBest;
+    const best = Math.max(this.score, previousBest);
     this.registry.set('best', best);
-
-    this.cameras.main.flash(180, 255, 93, 143);
-
-    this.time.delayedCall(650, () => {
-      this.cameras.main.fadeOut(250, 16, 20, 35);
-      this.time.delayedCall(260, () => {
-        this.scene.start('Result', { score: this.score, best, won });
-      });
-    });
-
-    /* Libera recursos antes de cerrar el juego o pasar a Result,
-     * para que el navegador no retenga memoria al cambiar de escena.
-     */
-    this.cleanupRocks();
-    this.cleanupPauseMemory();
+    this.registry.set('credits', (this.registry.get('credits') || 0) + this.creditsEarned);
+    Sfx.blip(won ? 880 : 150, 0.3, won ? 'sine' : 'sawtooth', 0.07);
+    this.cameras.main.flash(180, won ? 126 : 255, won ? 240 : 93, won ? 192 : 143);
+    this.time.delayedCall(650, () => this.scene.start('Result', {
+      score: this.score, credits: this.creditsEarned, best, isRecord, won, wave: this.wave, collected: this.collected
+    }));
   }
 
-  update() {
-    if (!this.player || this.isOver || this.isPaused) return;
-
-    // Soporte para teclas de flecha y WASD (W,A,S,D)
-    const cursorLeft = this.cursors.left.isDown;
-    const cursorRight = this.cursors.right.isDown;
-    const cursorUp = this.cursors.up.isDown;
-    const cursorDown = this.cursors.down.isDown;
-
-    const wDown = this.input.keyboard.checkDown(87) || this.keys.w.isDown;
-    const aDown = this.input.keyboard.checkDown(65) || this.keys.a.isDown;
-    const sDown = this.input.keyboard.checkDown(83) || this.keys.s.isDown;
-    const dDown = this.input.keyboard.checkDown(68) || this.keys.d.isDown;
-
-    let x = 0;
-    let y = 0;
-
-    if (cursorLeft || aDown) x -= 1;
-    if (cursorRight || dDown) x += 1;
-    if (cursorUp || wDown) y -= 1;
-    if (cursorDown || sDown) y += 1;
-
-    if (x !== 0 || y !== 0) {
-      // Se suman los vectores y se normaliza: las diagonales también van a PLAYER_SPEED px/s.
-      const length = Math.sqrt(x * x + y * y);
-      this.player.setVelocity(
-        (x / length) * PLAYER_SPEED,
-        (y / length) * PLAYER_SPEED
-      );
-    } else {
+  update(time, delta) {
+    if (this.isOver || this.isPaused) return;
+    this.dashCooldown = Math.max(0, this.dashCooldown - delta / 1000);
+    if (this.predatorTime > 0) {
+      this.predatorTime = Math.max(0, this.predatorTime - delta / 1000);
+      if (this.predatorTime === 0) {
+        this.invulnerable = false;
+        this.player.clearTint();
+      }
+    }
+    const x = (this.cursors.right.isDown || this.keys.d.isDown ? 1 : 0) - (this.cursors.left.isDown || this.keys.a.isDown ? 1 : 0);
+    const y = (this.cursors.down.isDown || this.keys.s.isDown ? 1 : 0) - (this.cursors.up.isDown || this.keys.w.isDown ? 1 : 0);
+    const direction = new Phaser.Math.Vector2(x, y);
+    if (direction.length() > 0) {
+      direction.normalize();
+      this.player.setVelocity(direction.x * this.playerSpeed, direction.y * this.playerSpeed);
+    } else if (this.dashCooldown <= 2.85) {
       this.player.setVelocity(0, 0);
     }
+    this.updateHUD();
   }
 }
 
-/* ----------------------------------------------------------------- resultado */
 class ResultScene extends Phaser.Scene {
-  constructor() {
-    super('Result');
-  }
+  constructor() { super('Result'); }
 
   init(data) {
     this.finalScore = data.score || 0;
+    this.credits = data.credits || 0;
     this.bestScore = data.best || 0;
+    this.isRecord = Boolean(data.isRecord);
     this.won = Boolean(data.won);
+    this.wave = data.wave || 1;
+    this.collected = data.collected || 0;
   }
 
   create() {
     ensureTextures(this);
-    this.cameras.main.setBackgroundColor(COLORS.bg);
-    this.cameras.main.fadeIn(250, 16, 20, 35);
-    drawGrid(this);
-
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05070d, 0.55).setOrigin(0);
-
+    drawBackground(this);
+    addStars(this);
+    this.cameras.main.fadeIn(250, 9, 13, 26);
     const accent = this.won ? COLORS.good : COLORS.accent;
-    const title = this.add
-      .text(GAME_WIDTH / 2, 185, this.won ? '¡TIEMPO!' : 'GAME OVER', {
-        fontFamily: FONT,
-        fontSize: '66px',
-        color: accent,
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5);
-    title.setShadow(0, 0, accent, 22, true, true);
-
-    this.add
-      .text(
-        GAME_WIDTH / 2,
-        250,
-        this.won ? 'Has sobrevivido a la ronda' : 'Te quedaste sin vidas',
-        { fontFamily: FONT, fontSize: '18px', color: COLORS.text }
-      )
-      .setOrigin(0.5);
-
-    this.add
-      .text(GAME_WIDTH / 2, 330, `PUNTOS ${this.finalScore}`, {
-        fontFamily: FONT,
-        fontSize: '32px',
-        color: COLORS.text
-      })
-      .setOrigin(0.5);
-
-    const isRecord = this.finalScore > 0 && this.finalScore >= this.bestScore;
-    this.add
-      .text(
-        GAME_WIDTH / 2,
-        378,
-        isRecord ? '¡NUEVO RÉCORD!' : `RÉCORD ${this.bestScore}`,
-        {
-          fontFamily: FONT,
-          fontSize: '18px',
-          color: isRecord ? COLORS.good : COLORS.dim
-        }
-      )
-      .setOrigin(0.5);
-
-    const hint = this.add
-      .text(
-        GAME_WIDTH / 2,
-        460,
-        'ESPACIO / R para jugar de nuevo · ESC para el menú',
-        { fontFamily: FONT, fontSize: '17px', color: COLORS.text }
-      )
-      .setOrigin(0.5);
-    this.tweens.add({
-      targets: hint,
-      alpha: 0.3,
-      duration: 750,
-      yoyo: true,
-      repeat: -1
-    });
-
-    const replay = () => {
-      Sfx.blip(520, 0.08, 'triangle', 0.05);
-      this.scene.start('Game');
-    };
-
+    const title = this.add.text(400, 155, this.won ? 'CIUDAD REACTIVADA' : 'SEÑAL PERDIDA', {
+      fontFamily: FONT, fontSize: this.won ? '42px' : '56px', color: accent, fontStyle: 'bold',
+      align: 'center'
+    }).setOrigin(0.5);
+    title.setShadow(0, 0, accent, 18, true, true);
+    this.add.text(400, 220, this.won ? 'Neon-7 vuelve a respirar gracias a ti.' : 'La oscuridad tomó el último circuito.', {
+      fontFamily: FONT, fontSize: '17px', color: COLORS.text
+    }).setOrigin(0.5);
+    this.add.text(400, 300, `PUNTOS  ${this.finalScore}\nNÚCLEOS  ${this.collected}\nOLEADA  ${this.wave}\nCRÉDITOS +${this.credits}`, {
+      fontFamily: FONT, fontSize: '24px', color: COLORS.text, align: 'center', lineSpacing: 12
+    }).setOrigin(0.5);
+    this.add.text(400, 405, this.isRecord ? '¡NUEVO RÉCORD!' : `RÉCORD ${this.bestScore}`, {
+      fontFamily: FONT, fontSize: '19px', color: this.isRecord ? COLORS.good : COLORS.dim
+    }).setOrigin(0.5);
+    const hint = this.add.text(400, 500, 'ESPACIO / R: REPETIR   ·   T: TIENDA   ·   ESC: MENÚ', {
+      fontFamily: FONT, fontSize: '15px', color: COLORS.text
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: hint, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
+    const replay = () => { Sfx.init(); this.scene.start('Game'); };
     this.input.keyboard.once('keydown-SPACE', replay);
     this.input.keyboard.once('keydown-R', replay);
+    this.input.keyboard.once('keydown-T', () => this.scene.start('Shop', { returnTo: 'Result' }));
     this.input.keyboard.once('keydown-ESC', () => this.scene.start('Menu'));
     this.input.once('pointerdown', replay);
   }
 }
 
-/* ----------------------------------------------------------------- config */
+class ShopScene extends Phaser.Scene {
+  constructor() { super('Shop'); }
+
+  init(data) {
+    this.returnTo = data.returnTo || 'Menu';
+  }
+
+  create() {
+    ensureTextures(this);
+    drawBackground(this);
+    addStars(this);
+    Sfx.startMusic();
+    this.cameras.main.fadeIn(220, 9, 13, 26);
+    this.credits = this.registry.get('credits') || 0;
+    this.upgrades = { speed: 0, magnet: 0, armor: 0, ...(this.registry.get('upgrades') || {}) };
+    this.add.text(400, 78, 'MERCADO DE LA RED', {
+      fontFamily: FONT, fontSize: '38px', color: COLORS.accent, fontStyle: 'bold'
+    }).setOrigin(0.5).setShadow(0, 0, COLORS.accent, 16, true, true);
+    this.add.text(400, 123, 'Invierte tus créditos. Las mejoras duran toda la partida.', {
+      fontFamily: FONT, fontSize: '15px', color: COLORS.dim
+    }).setOrigin(0.5);
+    this.creditText = this.add.text(400, 162, '', {
+      fontFamily: FONT, fontSize: '21px', color: '#ffd166'
+    }).setOrigin(0.5);
+
+    this.cards = [
+      { key: 'speed', title: 'TURBO NEÓN', description: '+22 velocidad por nivel', cost: 20, color: '#4cc9f0' },
+      { key: 'magnet', title: 'IMÁN DE NÚCLEOS', description: '+1 núcleo inicial por nivel', cost: 25, color: '#ffd166' },
+      { key: 'armor', title: 'BLINDAJE', description: '+1 vida al comenzar', cost: 40, color: '#7ef0c0' }
+    ];
+    this.cardTexts = [];
+    this.cards.forEach((card, index) => {
+      const x = 145 + index * 255;
+      const panel = this.add.rectangle(x, 315, 220, 235, 0x101a36, 0.94)
+        .setStrokeStyle(2, Phaser.Display.Color.HexStringToColor(card.color).color, 0.85);
+      this.add.text(x, 245, `${index + 1}`, { fontFamily: FONT, fontSize: '32px', color: card.color }).setOrigin(0.5);
+      this.add.text(x, 282, card.title, { fontFamily: FONT, fontSize: '17px', color: card.color, fontStyle: 'bold' }).setOrigin(0.5);
+      this.add.text(x, 335, card.description, { fontFamily: FONT, fontSize: '13px', color: COLORS.text, align: 'center', wordWrap: { width: 180 } }).setOrigin(0.5);
+      const status = this.add.text(x, 405, '', { fontFamily: FONT, fontSize: '14px', color: COLORS.good, align: 'center' }).setOrigin(0.5);
+      const buy = this.add.text(x, 468, `COMPRAR · ${card.cost} CR`, { fontFamily: FONT, fontSize: '13px', color: COLORS.text }).setOrigin(0.5);
+      this.cardTexts.push({ status, buy });
+      panel.setInteractive();
+      panel.on('pointerdown', () => this.buy(index));
+    });
+    this.refresh();
+    this.add.text(400, 570, '1/2/3 o toca una tarjeta: comprar   ·   ESPACIO: jugar   ·   ESC: volver', {
+      fontFamily: FONT, fontSize: '13px', color: COLORS.dim
+    }).setOrigin(0.5);
+    [1, 2, 3].forEach((key, index) => this.input.keyboard.once(`keydown-${key}`, () => this.buy(index)));
+    this.input.keyboard.once('keydown-SPACE', () => this.scene.start('Game'));
+    this.input.keyboard.once('keydown-ESC', () => this.scene.start(this.returnTo));
+  }
+
+  buy(index) {
+    const card = this.cards[index];
+    if (!card || this.credits < card.cost) {
+      Sfx.blip(120, 0.12, 'square', 0.05);
+      return;
+    }
+    this.credits -= card.cost;
+    this.upgrades[card.key] += 1;
+    this.registry.set('credits', this.credits);
+    this.registry.set('upgrades', this.upgrades);
+    Sfx.blip(760, 0.12, 'triangle', 0.06);
+    this.refresh();
+  }
+
+  refresh() {
+    this.creditText.setText(`CRÉDITOS DISPONIBLES: ${this.credits}`);
+    this.cards.forEach((card, index) => {
+      const level = this.upgrades[card.key];
+      this.cardTexts[index].status.setText(`NIVEL ${level}  ·  ${this.credits >= card.cost ? 'LISTO' : 'FALTA CRÉDITO'}`);
+      this.cardTexts[index].buy.setColor(this.credits >= card.cost ? COLORS.good : COLORS.dim);
+    });
+  }
+}
+
 const config = {
   type: Phaser.AUTO,
   parent: 'game',
   width: GAME_WIDTH,
   height: GAME_HEIGHT,
   backgroundColor: COLORS.bg,
-  physics: {
-    default: 'arcade',
-    arcade: {
-      gravity: { x: 0, y: 0 },
-      debug: false
-    }
-  },
-  scene: [MenuScene, GameScene, ResultScene]
+  physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: false } },
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: [MenuScene, GameScene, ResultScene, ShopScene]
 };
 
-// eslint-disable-next-line no-new
 new Phaser.Game(config);
